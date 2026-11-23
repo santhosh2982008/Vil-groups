@@ -1,0 +1,4515 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Vel Groups</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /* Layout: sticky utility bar + nav, full-width bands on a 7xl column; blueprint-grid heroes over a steel-grey page.
+     Palette: ink navy, steel greys, forge amber. Type: Barlow Condensed display, Barlow text, IBM Plex Mono for data. */
+  :root {
+    --ink: #12233A; --steel: #F3F5F8; --forge: #B45309;
+    --font-display: 'Barlow Condensed', 'Arial Narrow', sans-serif;
+    --font-body: 'Barlow', system-ui, sans-serif;
+    color-scheme: light;
+  }
+  body { background: var(--steel); color: var(--ink); font-family: var(--font-body); font-size: 16px; }
+  body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); background: #12233A; z-index: 45; }
+  header.sticky { top: env(safe-area-inset-top, 0px); }
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+</style>
+<style type="text/tailwindcss">
+
+@layer base {
+  html {
+    color-scheme: light;
+  }
+  body {
+    @apply bg-steel-50 font-sans text-ink antialiased;
+  }
+  h1,
+  h2,
+  h3 {
+    @apply font-display tracking-tight;
+    text-wrap: balance;
+  }
+  :focus-visible {
+    outline: 2px solid #b45309;
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  .wrap {
+    @apply mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-sm px-4 py-2.5 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply btn bg-forge text-white hover:bg-forge-dark;
+  }
+  .btn-dark {
+    @apply btn bg-ink text-white hover:bg-ink-700;
+  }
+  .btn-ghost {
+    @apply btn border border-steel-300 bg-white text-ink hover:border-ink hover:bg-steel-50;
+  }
+  .btn-danger {
+    @apply btn bg-bad text-white hover:opacity-90;
+  }
+  .field {
+    @apply w-full rounded-sm border border-steel-300 bg-white px-3 py-2.5 text-sm text-ink placeholder:text-steel-500 focus:border-ink focus:outline-none;
+  }
+  .label {
+    @apply mb-1 block text-xs font-semibold uppercase tracking-wider text-ink-500;
+  }
+  .eyebrow {
+    @apply font-mono text-xs font-medium uppercase tracking-[0.16em] text-forge-dark;
+  }
+  .panel {
+    @apply rounded-sm border border-steel-200 bg-white;
+  }
+}
+
+.blueprint {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.06) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+</style>
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script>tailwind.config = {
+  theme: { extend: {
+    colors: {
+      ink: { DEFAULT: '#12233A', 700: '#1E3552', 500: '#3B5476' },
+      steel: { 50: '#F3F5F8', 100: '#E8ECF1', 200: '#D3DAE3', 300: '#B3BFCD', 500: '#6B7C93' },
+      forge: { DEFAULT: '#B45309', dark: '#8A3F06', tint: '#FBEBD5' },
+      ok: '#1F7A4D', bad: '#B42318'
+    },
+    fontFamily: {
+      display: ['"Barlow Condensed"', 'Arial Narrow', 'sans-serif'],
+      sans: ['Barlow', 'system-ui', 'sans-serif'],
+      mono: ['"IBM Plex Mono"', 'ui-monospace', 'monospace']
+    }
+  } }
+};</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.26.4/babel.min.js"></script>
+<div id="root"></div>
+<script type="text/plain" id="vel-src">
+const { useState, useEffect, useMemo, useCallback, useContext, createContext, StrictMode } = React;
+const { createRoot } = ReactDOM;
+// ---- src/types.ts ----
+type Role = 'guest' | 'customer' | 'admin';
+
+interface Session {
+  email: string;
+  name: string;
+  /** epoch ms; the session is ignored after this time */
+  expiresAt: number;
+}
+
+interface UserRecord {
+  email: string;
+  name: string;
+  salt: string;
+  hash: string;
+  iterations: number;
+  createdAt: string;
+  /** consecutive wrong passwords */
+  failed: number;
+  /** epoch ms until which sign-in is blocked */
+  lockedUntil: number;
+}
+
+interface Spec {
+  label: string;
+  value: string;
+}
+
+interface Product {
+  id: string;
+  sku: string;
+  name: string;
+  category: string;
+  brand: string;
+  price: number; // ex-GST, INR
+  mrp: number;
+  stock: number;
+  unit: string;
+  description: string;
+  specs: Spec[];
+  featured: boolean;
+  /** Uploaded product photo (compressed data URL). Empty/undefined shows a placeholder. */
+  image?: string;
+  /** Owner switch. false = shown as "Out of stock" even if quantity > 0. Undefined counts as true. */
+  available?: boolean;
+  /** Owner switch. true = hidden from the public store, home page and cart. */
+  hidden?: boolean;
+}
+
+interface Courier {
+  id: string;
+  name: string;
+  charge: number; // INR
+  eta: string;
+  enabled: boolean;
+}
+
+interface PaymentMethod {
+  id: string;
+  label: string;
+  instructions: string;
+  enabled: boolean;
+}
+
+type CouponType = 'percent' | 'flat';
+
+interface Coupon {
+  id: string;
+  code: string;
+  description: string;
+  type: CouponType;
+  value: number; // percent (0-100) or INR
+  minOrder: number; // INR, ex-GST subtotal; 0 = none
+  maxDiscount: number; // INR cap for percent coupons; 0 = no cap
+  expiresAt: string; // YYYY-MM-DD, '' = never
+  active: boolean;
+}
+
+interface Settings {
+  logo: string; // data URL, '' = default Vel mark
+  gstRate: number; // percent
+  freeShippingAbove: number; // INR, 0 = never free
+  couriers: Courier[];
+  payments: PaymentMethod[];
+  coupons: Coupon[];
+}
+
+interface Totals {
+  subtotal: number;
+  discount: number;
+  gst: number;
+  shipping: number;
+  total: number;
+  /** true while no courier has been chosen yet (cart page) */
+  shippingPending: boolean;
+}
+
+interface Service {
+  id: string;
+  name: string;
+  description: string;
+  priceFrom: number;
+  turnaround: string;
+  coverage: string[];
+}
+
+interface Company {
+  name: string;
+  tagline: string;
+  phone: string;
+  altPhone: string;
+  email: string;
+  address: string;
+  hours: string;
+  about: string;
+  manufacturing: {
+    intro: string;
+    capabilities: string[];
+    certifications: string[];
+    stats: Spec[];
+  };
+}
+
+interface CartLine {
+  productId: string;
+  qty: number;
+}
+
+interface ShippingInfo {
+  name: string;
+  phone: string;
+  line1: string;
+  city: string;
+  state: string;
+  pincode: string;
+}
+
+interface OrderItem {
+  productId: string;
+  name: string;
+  sku: string;
+  price: number;
+  qty: number;
+}
+
+type OrderStatus = 'Placed' | 'Processing' | 'Shipped' | 'Delivered' | 'Cancelled';
+
+interface Order {
+  id: string;
+  createdAt: string;
+  customerEmail: string;
+  customerName: string;
+  items: OrderItem[];
+  subtotal: number;
+  gst: number;
+  shipping: number;
+  total: number;
+  status: OrderStatus;
+  payment: string;
+  ship: ShippingInfo;
+  discount?: number;
+  coupon?: string;
+  courier?: string;
+}
+
+type EnquiryStatus = 'New' | 'Contacted' | 'Scheduled' | 'Closed';
+
+interface Enquiry {
+  id: string;
+  createdAt: string;
+  name: string;
+  phone: string;
+  email: string;
+  topic: string;
+  equipment: string;
+  preferredDate: string;
+  message: string;
+  status: EnquiryStatus;
+}
+
+type PlaceResult = { ok: true; order: Order } | { ok: false; error: string };
+
+// ---- src/config.ts ----
+/**
+ * ACCESS CONTROL
+ * The app owner's Gmail address. Only this account receives the "admin" role
+ * and can see or open the Management Dashboard; for everyone else the page
+ * does not appear and /#admin redirects to the homepage.
+ * Replace the placeholder below with the owner's real Gmail.
+ *
+ * IMPORTANT: this app runs entirely in the browser, so the check is a
+ * front-end gate only. Before going live, move authentication to a real
+ * provider (Google OAuth / Firebase Auth) and enforce the admin role on a
+ * server or in database rules.
+ */
+const ADMIN_EMAILS: string[] = ['santhosh2982008@gmail.com'];
+
+/** Sign-in protection */
+const SESSION_HOURS = 8;
+const MAX_FAILED_LOGINS = 5;
+const LOCKOUT_MINUTES = 5;
+
+/** Shipping, GST, payment methods and coupons are now edited in the Management Dashboard. */
+const KEY_PREFIX = 'vel.v1.';
+
+const ORDER_STATUSES = ['Placed', 'Processing', 'Shipped', 'Delivered', 'Cancelled'] as const;
+const ENQUIRY_STATUSES = ['New', 'Contacted', 'Scheduled', 'Closed'] as const;
+
+// ---- src/utils.ts ----
+
+/** A product can be bought only when the owner has not marked it out of stock and quantity > 0. */
+const isAvailable = (p: Product): boolean => p.available !== false && p.stock > 0;
+
+function couponDiscount(c: Coupon, subtotal: number): number {
+  let d = c.type === 'percent' ? (subtotal * c.value) / 100 : Math.min(c.value, subtotal);
+  if (c.type === 'percent' && c.maxDiscount > 0) d = Math.min(d, c.maxDiscount);
+  return Math.max(0, Math.round(d));
+}
+
+type CouponResult = { ok: true; coupon: Coupon; discount: number } | { ok: false; error: string };
+
+function evaluateCoupon(code: string, subtotal: number, coupons: Coupon[], now: Date = new Date()): CouponResult {
+  const wanted = code.trim().toUpperCase();
+  if (!wanted) return { ok: false, error: 'Enter a coupon code.' };
+  const c = coupons.find((x) => x.code.trim().toUpperCase() === wanted);
+  if (!c) return { ok: false, error: 'This coupon code is not valid.' };
+  if (!c.active) return { ok: false, error: 'This coupon is not active.' };
+  if (c.expiresAt && new Date(c.expiresAt + 'T23:59:59').getTime() < now.getTime()) {
+    return { ok: false, error: 'This coupon has expired.' };
+  }
+  if (subtotal < c.minOrder) {
+    return { ok: false, error: `Add items worth ${inr(c.minOrder - subtotal)} more (excl. GST) to use this coupon.` };
+  }
+  return { ok: true, coupon: c, discount: couponDiscount(c, subtotal) };
+}
+
+function computeTotals(subtotal: number, settings: Settings, coupon: Coupon | null, courier: Courier | null): Totals {
+  const discount = coupon ? couponDiscount(coupon, subtotal) : 0;
+  const taxable = Math.max(0, subtotal - discount);
+  const gst = (taxable * settings.gstRate) / 100;
+  const free = settings.freeShippingAbove > 0 && taxable >= settings.freeShippingAbove;
+  const shipping = subtotal === 0 || free || !courier ? 0 : courier.charge;
+  return {
+    subtotal,
+    discount,
+    gst,
+    shipping,
+    total: taxable + gst + shipping,
+    shippingPending: subtotal > 0 && !free && !courier,
+  };
+}
+
+/** Resize an uploaded image in the browser so it stays small enough for local storage. */
+function resizeImage(file: File, maxDim: number, mime: 'image/jpeg' | 'image/png', quality = 0.82): Promise<string> {
+  return new Promise((resolve, reject) => {
+    if (!file.type.startsWith('image/')) {
+      reject(new Error('Choose an image file (JPG, PNG or WebP).'));
+      return;
+    }
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('That file could not be read.'));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('That image could not be opened.'));
+      img.onload = () => {
+        const iw = img.naturalWidth || 300;
+        const ih = img.naturalHeight || 300;
+        const scale = Math.min(1, maxDim / Math.max(iw, ih));
+        const w = Math.max(1, Math.round(iw * scale));
+        const h = Math.max(1, Math.round(ih * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          reject(new Error('Image processing is not available in this browser.'));
+          return;
+        }
+        if (mime === 'image/jpeg') {
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, w, h);
+        }
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL(mime, quality));
+      };
+      img.src = String(reader.result);
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+const inr = (n: number): string => '₹' + Math.round(n).toLocaleString('en-IN');
+
+function fmtDate(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+function uid(prefix: string): string {
+  return prefix + '-' + Math.random().toString(36).slice(2, 8).toUpperCase();
+}
+
+function orderId(): string {
+  const d = new Date();
+  const yy = String(d.getFullYear()).slice(2);
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `VEL-${yy}${mm}${dd}-${Math.floor(1000 + Math.random() * 9000)}`;
+}
+
+/** "Label: value" per line -> Spec[] */
+function parseSpecs(text: string): Spec[] {
+  return text
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .map((l) => {
+      const i = l.indexOf(':');
+      return i === -1 ? { label: l, value: '' } : { label: l.slice(0, i).trim(), value: l.slice(i + 1).trim() };
+    });
+}
+
+const specsToText = (specs: Spec[]): string => specs.map((s) => `${s.label}: ${s.value}`).join('\n');
+
+const parseLines = (text: string): string[] =>
+  text
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean);
+
+const discountPct = (price: number, mrp: number): number =>
+  mrp > price ? Math.round(((mrp - price) / mrp) * 100) : 0;
+
+const isValidGmail = (email: string): boolean => /^[a-z0-9._%+-]+@gmail\.com$/i.test(email.trim());
+const isValidEmail = (email: string): boolean => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+const isValidPhone = (phone: string): boolean => phone.replace(/[^\d]/g, '').length >= 10;
+
+// ---- src/auth.ts ----
+/**
+ * Password handling. Passwords are never stored: each account keeps a random
+ * salt and a PBKDF2-SHA256 hash derived with the browser's WebCrypto API.
+ */
+
+const ITERATIONS = 310_000;
+const encoder = new TextEncoder();
+
+const toB64 = (bytes: ArrayBuffer | Uint8Array): string => {
+  const arr = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  let bin = '';
+  for (let i = 0; i < arr.length; i++) bin += String.fromCharCode(arr[i]);
+  return btoa(bin);
+};
+const fromB64 = (s: string): Uint8Array => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+
+interface PasswordHash {
+  salt: string;
+  hash: string;
+  iterations: number;
+}
+
+async function hashPassword(password: string, saltB64?: string, iterations: number = ITERATIONS): Promise<PasswordHash> {
+  if (typeof crypto === 'undefined' || !crypto.subtle) {
+    throw new Error('Secure sign-in needs HTTPS. Open the site over https:// and try again.');
+  }
+  const salt = saltB64 ? fromB64(saltB64) : crypto.getRandomValues(new Uint8Array(16));
+  const key = await crypto.subtle.importKey('raw', encoder.encode(password), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt: salt as BufferSource, iterations, hash: 'SHA-256' }, key, 256);
+  return { salt: toB64(salt), hash: toB64(bits), iterations };
+}
+
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+/** Human-readable list of what a password is still missing. Empty = acceptable. */
+function passwordProblems(pw: string): string[] {
+  const out: string[] = [];
+  if (pw.length < 8) out.push('at least 8 characters');
+  if (!/[a-z]/.test(pw)) out.push('a lowercase letter');
+  if (!/[A-Z]/.test(pw)) out.push('an uppercase letter');
+  if (!/\d/.test(pw)) out.push('a number');
+  return out;
+}
+
+/** 0 (empty) to 4 (strong), for the strength meter. */
+function passwordStrength(pw: string): number {
+  if (!pw) return 0;
+  let score = 0;
+  if (pw.length >= 8) score++;
+  if (/[a-z]/.test(pw) && /[A-Z]/.test(pw)) score++;
+  if (/\d/.test(pw)) score++;
+  if (/[^A-Za-z0-9]/.test(pw) || pw.length >= 14) score++;
+  return score;
+}
+
+// ---- src/seed.ts ----
+
+/** Starting owner settings. All of it is editable in the Management Dashboard. */
+const SEED_SETTINGS: Settings = {
+  logo: '',
+  gstRate: 18,
+  freeShippingAbove: 25000,
+  couriers: [
+    { id: 'c-std', name: 'Standard road courier', charge: 750, eta: '4 to 6 working days', enabled: true },
+    { id: 'c-exp', name: 'Express courier', charge: 1800, eta: '1 to 2 working days', enabled: true },
+    { id: 'c-frt', name: 'Freight transport (heavy items)', charge: 3200, eta: '5 to 8 working days', enabled: true },
+  ],
+  payments: [
+    { id: 'pm-cod', label: 'Cash on delivery', instructions: 'Pay the courier when the parcel arrives.', enabled: true },
+    { id: 'pm-upi', label: 'UPI on delivery', instructions: 'Pay by UPI when the parcel arrives.', enabled: true },
+    {
+      id: 'pm-bank',
+      label: 'Bank transfer (NEFT/RTGS)',
+      instructions: 'A proforma invoice with bank details is sent after you place the order.',
+      enabled: true,
+    },
+  ],
+  coupons: [
+    {
+      id: 'cp-welcome',
+      code: 'WELCOME10',
+      description: '10% off orders above ₹5,000 (sample)',
+      type: 'percent',
+      value: 10,
+      minOrder: 5000,
+      maxDiscount: 3000,
+      expiresAt: '',
+      active: true,
+    },
+    {
+      id: 'cp-flat',
+      code: 'FLAT500',
+      description: '₹500 off orders above ₹10,000 (sample)',
+      type: 'flat',
+      value: 500,
+      minOrder: 10000,
+      maxDiscount: 0,
+      expiresAt: '',
+      active: true,
+    },
+  ],
+};
+
+/** Sample content. Everything here can be edited from the Management Dashboard. */
+
+const SEED_PRODUCTS: Product[] = [
+  {
+    id: 'p-hgp40',
+    sku: 'VH-HGP-40',
+    name: 'Hydraulic Gear Pump HGP-40',
+    category: 'Hydraulics',
+    brand: 'Vel Hydro',
+    price: 18500,
+    mrp: 21000,
+    stock: 24,
+    unit: 'piece',
+    description:
+      'Cast-iron external gear pump for mobile and stationary power packs. Supplied tested, with mounting flange and coupling key.',
+    specs: [
+      { label: 'Displacement', value: '40 cc/rev' },
+      { label: 'Max. pressure', value: '250 bar' },
+      { label: 'Speed range', value: '600 to 3000 rpm' },
+      { label: 'Port size', value: '3/4" BSP' },
+      { label: 'Weight', value: '6.8 kg' },
+    ],
+    featured: true,
+  },
+  {
+    id: 'p-motor75',
+    sku: 'VM-IM-75-4P',
+    name: 'Three-Phase Induction Motor 7.5 kW',
+    category: 'Motors & Drives',
+    brand: 'Vel Electric',
+    price: 29500,
+    mrp: 33000,
+    stock: 12,
+    unit: 'piece',
+    description: 'Foot-mounted IE3 efficiency motor for pumps, compressors and conveyors. Dynamically balanced rotor.',
+    specs: [
+      { label: 'Power', value: '7.5 kW / 10 HP' },
+      { label: 'Voltage', value: '415 V, 50 Hz, 3-phase' },
+      { label: 'Speed', value: '1440 rpm (4-pole)' },
+      { label: 'Protection', value: 'IP55, Class F insulation' },
+      { label: 'Frame', value: '132M, B3 mounting' },
+    ],
+    featured: true,
+  },
+  {
+    id: 'p-vfd11',
+    sku: 'VE-VFD-11K',
+    name: 'Variable Frequency Drive 11 kW',
+    category: 'Motors & Drives',
+    brand: 'Vel Electric',
+    price: 38900,
+    mrp: 42500,
+    stock: 9,
+    unit: 'piece',
+    description: 'Sensorless vector drive with built-in EMC filter and Modbus RTU. Suited to fans, pumps and conveyors.',
+    specs: [
+      { label: 'Rated power', value: '11 kW' },
+      { label: 'Input', value: '380 to 480 V, 3-phase' },
+      { label: 'Overload', value: '150% for 60 s' },
+      { label: 'Enclosure', value: 'IP20' },
+      { label: 'Communication', value: 'Modbus RTU (RS-485)' },
+    ],
+    featured: true,
+  },
+  {
+    id: 'p-bearing',
+    sku: 'VB-6310-2RS-10',
+    name: 'Deep Groove Ball Bearing 6310-2RS (Pack of 10)',
+    category: 'Bearings',
+    brand: 'Vel Precision',
+    price: 7400,
+    mrp: 8200,
+    stock: 120,
+    unit: 'pack',
+    description: 'Sealed, pre-lubricated bearings for electric motors, gearboxes and fans.',
+    specs: [
+      { label: 'Bore / OD / Width', value: '50 / 110 / 27 mm' },
+      { label: 'Seal', value: 'Double rubber, 2RS' },
+      { label: 'Dynamic load', value: '61.8 kN' },
+      { label: 'Pack size', value: '10 pieces' },
+    ],
+    featured: false,
+  },
+  {
+    id: 'p-cyl63',
+    sku: 'VP-ISO-63x200',
+    name: 'Pneumatic Cylinder ISO 15552, 63 x 200',
+    category: 'Pneumatics',
+    brand: 'Vel Air',
+    price: 6200,
+    mrp: 6900,
+    stock: 40,
+    unit: 'piece',
+    description: 'Double-acting profile-barrel cylinder with adjustable end cushioning and magnetic piston.',
+    specs: [
+      { label: 'Bore / Stroke', value: '63 mm / 200 mm' },
+      { label: 'Operating pressure', value: '1 to 10 bar' },
+      { label: 'Action', value: 'Double acting, cushioned' },
+      { label: 'Port', value: 'G 3/8' },
+    ],
+    featured: false,
+  },
+  {
+    id: 'p-valve2',
+    sku: 'VV-GV-SS-2',
+    name: 'Stainless Steel Gate Valve 2" PN16',
+    category: 'Valves',
+    brand: 'Vel Flow',
+    price: 4800,
+    mrp: 5400,
+    stock: 55,
+    unit: 'piece',
+    description: 'CF8M body, flanged ends to ASME B16.5 class 150. For water, steam condensate and mild chemicals.',
+    specs: [
+      { label: 'Size', value: '2" (DN50)' },
+      { label: 'Rating', value: 'PN16' },
+      { label: 'Body material', value: 'CF8M stainless steel' },
+      { label: 'End connection', value: 'Flanged' },
+    ],
+    featured: false,
+  },
+  {
+    id: 'p-weld400',
+    sku: 'VW-INV-400A',
+    name: 'Inverter Arc Welding Machine 400 A',
+    category: 'Welding',
+    brand: 'Vel Weld',
+    price: 42500,
+    mrp: 47000,
+    stock: 7,
+    unit: 'piece',
+    description: 'IGBT inverter MMA/TIG machine with hot start and arc-force control. Supplied with cables and holder.',
+    specs: [
+      { label: 'Output current', value: '20 to 400 A' },
+      { label: 'Duty cycle', value: '60% at 400 A' },
+      { label: 'Input', value: '415 V, 3-phase' },
+      { label: 'Modes', value: 'MMA, lift-arc TIG' },
+    ],
+    featured: true,
+  },
+  {
+    id: 'p-insert',
+    sku: 'VT-DNMG150608-10',
+    name: 'Carbide Turning Insert DNMG 150608 (Box of 10)',
+    category: 'Tooling',
+    brand: 'Vel Tooling',
+    price: 3600,
+    mrp: 4100,
+    stock: 200,
+    unit: 'box',
+    description: 'Coated carbide inserts for medium-roughing of steel and stainless steel on CNC lathes.',
+    specs: [
+      { label: 'Geometry', value: 'DNMG 150608' },
+      { label: 'Grade', value: 'Coated carbide, P25' },
+      { label: 'Nose radius', value: '0.8 mm' },
+      { label: 'Box quantity', value: '10 inserts' },
+    ],
+    featured: false,
+  },
+  {
+    id: 'p-chain',
+    sku: 'VT-RC-12B1-KIT',
+    name: 'Roller Chain Drive Kit 12B-1',
+    category: 'Power Transmission',
+    brand: 'Vel Drive',
+    price: 5400,
+    mrp: 6000,
+    stock: 3,
+    unit: 'kit',
+    description: 'Simplex roller chain with driver and driven sprockets, sold as a matched set.',
+    specs: [
+      { label: 'Chain', value: '12B-1, 19.05 mm pitch' },
+      { label: 'Sprockets', value: '17T driver / 34T driven' },
+      { label: 'Chain length', value: '2.5 m' },
+      { label: 'Ratio', value: '2 : 1' },
+    ],
+    featured: false,
+  },
+  {
+    id: 'p-torque',
+    sku: 'VT-TW-40-200',
+    name: 'Digital Torque Wrench 40 to 200 Nm',
+    category: 'Hand Tools',
+    brand: 'Vel Tools',
+    price: 11800,
+    mrp: 13200,
+    stock: 15,
+    unit: 'piece',
+    description: 'Digital torque wrench with peak hold, buzzer and LED alert. Supplied with calibration certificate.',
+    specs: [
+      { label: 'Range', value: '40 to 200 Nm' },
+      { label: 'Accuracy', value: '±2%' },
+      { label: 'Drive', value: '1/2" square' },
+      { label: 'Units', value: 'Nm, kgf·m, lbf·ft' },
+    ],
+    featured: false,
+  },
+];
+
+const SEED_SERVICES: Service[] = [
+  {
+    id: 's-pm',
+    name: 'Preventive Maintenance Contract',
+    description:
+      'Scheduled inspections, lubrication, alignment and vibration checks with a written condition report after every visit.',
+    priceFrom: 12000,
+    turnaround: 'Monthly or quarterly visits',
+    coverage: ['Motors', 'Pumps', 'Compressors', 'Gearboxes'],
+  },
+  {
+    id: 's-hyd',
+    name: 'Hydraulic System Overhaul',
+    description:
+      'Pump, valve and cylinder rebuild with flushing, seal replacement and a pressure test before hand-over.',
+    priceFrom: 18000,
+    turnaround: '5 to 7 working days',
+    coverage: ['Power packs', 'Presses', 'Mobile hydraulics'],
+  },
+  {
+    id: 's-rewind',
+    name: 'Motor Rewinding and Testing',
+    description: 'Rewinding to the original data, varnish impregnation, balancing and a full no-load and insulation test.',
+    priceFrom: 6500,
+    turnaround: '3 to 5 working days',
+    coverage: ['1 to 250 kW', 'LT and HT', 'Pump motors'],
+  },
+  {
+    id: 's-cnc',
+    name: 'CNC and Machine Tool Calibration',
+    description: 'Geometric alignment, ballbar test and backlash compensation to restore positioning accuracy.',
+    priceFrom: 22000,
+    turnaround: '2 to 3 working days',
+    coverage: ['Lathes', 'Machining centres', 'Grinders'],
+  },
+  {
+    id: 's-breakdown',
+    name: 'On-site Breakdown Support',
+    description: 'A service engineer at your plant with a stocked van for diagnosis and first-line repair.',
+    priceFrom: 4500,
+    turnaround: 'Same day within service area',
+    coverage: ['Electrical', 'Mechanical', 'Hydraulic'],
+  },
+  {
+    id: 's-weld',
+    name: 'Welding and Fabrication Repair',
+    description: 'Structural and pressure-part repair welding with dye-penetrant checks on request.',
+    priceFrom: 3500,
+    turnaround: '1 to 3 working days',
+    coverage: ['Frames', 'Tanks', 'Shafts and housings'],
+  },
+];
+
+const SEED_COMPANY: Company = {
+  name: 'Vel Groups',
+  tagline: 'Engineering, manufacturing and service for Indian industry.',
+  phone: '+91 98765 43210',
+  altPhone: '+91 98765 43211',
+  email: 'contact@velgroups.example',
+  address: '12, Industrial Estate Road, Coimbatore, Tamil Nadu 641 021',
+  hours: 'Mon to Sat, 9:00 AM to 6:00 PM IST',
+  about:
+    'Vel Groups brings together a service center, an industrial store and a manufacturing unit, so a plant can repair, replace or build from one supplier.',
+  manufacturing: {
+    intro:
+      'Vel Manufacturing Company builds hydraulic power packs, fabricated frames and machined components to customer drawings, in batches from one piece to several hundred.',
+    capabilities: [
+      'CNC turning and milling',
+      'Sheet-metal fabrication and welding',
+      'Hydraulic power pack assembly',
+      'Heat treatment through approved partners',
+      'Surface finishing and painting',
+      'Reverse engineering from worn samples',
+    ],
+    certifications: ['ISO 9001 quality management system', 'Material test certificates with every batch', 'Calibrated inspection tools'],
+    stats: [
+      { label: 'Years in industry', value: '25+' },
+      { label: 'Machines on the floor', value: '40' },
+      { label: 'Active customers', value: '300+' },
+      { label: 'On-time dispatch', value: '96%' },
+    ],
+  },
+};
+
+// ---- src/router.ts ----
+
+type RouteId =
+  | 'home'
+  | 'service-center'
+  | 'store'
+  | 'manufacturing'
+  | 'service-enquiry'
+  | 'cart'
+  | 'checkout'
+  | 'login'
+  | 'admin';
+
+const ROUTE_IDS: RouteId[] = [
+  'home',
+  'service-center',
+  'store',
+  'manufacturing',
+  'service-enquiry',
+  'cart',
+  'checkout',
+  'login',
+  'admin',
+];
+
+/**
+ * Role-based access table. This is the single source of truth for who can
+ * open which page. Standard users get browsing, cart, checkout and enquiries;
+ * only the admin role reaches the Management Dashboard.
+ */
+const ROUTE_ACCESS: Record<RouteId, Role[]> = {
+  home: ['guest', 'customer', 'admin'],
+  'service-center': ['guest', 'customer', 'admin'],
+  store: ['guest', 'customer', 'admin'],
+  manufacturing: ['guest', 'customer', 'admin'],
+  'service-enquiry': ['guest', 'customer', 'admin'],
+  cart: ['guest', 'customer', 'admin'],
+  checkout: ['customer', 'admin'],
+  login: ['guest', 'customer', 'admin'],
+  admin: ['admin'],
+};
+
+function readRoute(): RouteId {
+  const h = window.location.hash.replace('#', '');
+  return (ROUTE_IDS as string[]).includes(h) ? (h as RouteId) : 'home';
+}
+
+function go(route: RouteId): void {
+  if (window.location.hash === '#' + route) {
+    window.scrollTo(0, 0);
+    return;
+  }
+  window.location.hash = route;
+}
+
+function useRoute(): RouteId {
+  const [route, setRoute] = useState<RouteId>(readRoute());
+  useEffect(() => {
+    const onChange = () => {
+      setRoute(readRoute());
+      window.scrollTo(0, 0);
+    };
+    window.addEventListener('hashchange', onChange);
+    return () => window.removeEventListener('hashchange', onChange);
+  }, []);
+  return route;
+}
+
+// ---- src/store.tsx ----
+
+/* ---------- localStorage persistence (the "mock database") ---------- */
+
+function loadKey<T>(key: string, fallback: T): T {
+  try {
+    const raw = window.localStorage.getItem(KEY_PREFIX + key);
+    return raw ? (JSON.parse(raw) as T) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function saveKey(key: string, value: unknown): void {
+  try {
+    window.localStorage.setItem(KEY_PREFIX + key, JSON.stringify(value));
+  } catch {
+    // Most often the browser's ~5 MB quota, caused by large uploaded images.
+    window.dispatchEvent(new CustomEvent('vel-storage-error'));
+  }
+}
+
+function usePersisted<T>(key: string, initial: T) {
+  const [value, setValue] = useState<T>(() => loadKey<T>(key, initial));
+  useEffect(() => {
+    saveKey(key, value);
+  }, [key, value]);
+  return [value, setValue] as const;
+}
+
+/* ---------- context ---------- */
+
+interface Toast {
+  id: number;
+  message: string;
+}
+
+interface CartDetail {
+  line: CartLine;
+  product: Product;
+}
+
+interface Quote {
+  totals: Totals;
+  coupon: Coupon | null;
+  courier: Courier | null;
+  couponError: string;
+}
+
+interface AppCtx {
+  session: Session | null;
+  role: Role;
+  products: Product[];
+  /** products the public can see (not hidden by the owner) */
+  catalog: Product[];
+  services: Service[];
+  company: Company;
+  settings: Settings;
+  orders: Order[];
+  enquiries: Enquiry[];
+  cart: CartLine[];
+  cartDetail: CartDetail[];
+  cartCount: number;
+  totals: Totals;
+  quote: (couponCode: string, courierId: string) => Quote;
+  prefill: string;
+  setPrefill: (topic: string) => void;
+  toasts: Toast[];
+  notify: (message: string) => void;
+  register: (email: string, name: string, password: string) => Promise<string | null>;
+  login: (email: string, password: string) => Promise<string | null>;
+  signOut: () => void;
+  addToCart: (productId: string, qty?: number) => void;
+  setQty: (productId: string, qty: number) => void;
+  removeFromCart: (productId: string) => void;
+  placeOrder: (ship: ShippingInfo, paymentId: string, courierId: string, couponCode: string) => PlaceResult;
+  submitEnquiry: (e: Omit<Enquiry, 'id' | 'createdAt' | 'status'>) => Enquiry;
+  saveProduct: (p: Product) => boolean;
+  deleteProduct: (id: string) => void;
+  saveService: (s: Service) => boolean;
+  deleteService: (id: string) => void;
+  saveCompany: (c: Company) => boolean;
+  saveSettings: (s: Settings) => boolean;
+  setOrderStatus: (id: string, status: OrderStatus) => void;
+  setEnquiryStatus: (id: string, status: EnquiryStatus) => void;
+  resetAll: () => void;
+}
+
+const Ctx = createContext<AppCtx | null>(null);
+
+function useApp(): AppCtx {
+  const v = useContext(Ctx);
+  if (!v) throw new Error('useApp must be used inside <AppProvider>');
+  return v;
+}
+
+function AppProvider({ children }: { children: ReactNode }) {
+  const [storedSession, setSession] = usePersisted<Session | null>('session', null);
+  const [users, setUsers] = usePersisted<UserRecord[]>('users', []);
+  const [, setClock] = useState(0);
+  // A session is only valid until its expiry time; older sessions (no expiry) are rejected.
+  const session: Session | null =
+    storedSession && typeof storedSession.expiresAt === 'number' && storedSession.expiresAt > Date.now() ? storedSession : null;
+  const [products, setProducts] = usePersisted<Product[]>('products', SEED_PRODUCTS);
+  const [services, setServices] = usePersisted<Service[]>('services', SEED_SERVICES);
+  const [company, setCompany] = usePersisted<Company>('company', SEED_COMPANY);
+  const [settings, setSettings] = usePersisted<Settings>('settings', SEED_SETTINGS);
+  const [orders, setOrders] = usePersisted<Order[]>('orders', []);
+  const [enquiries, setEnquiries] = usePersisted<Enquiry[]>('enquiries', []);
+  const [cart, setCart] = usePersisted<CartLine[]>('cart', []);
+  const [prefill, setPrefill] = useState('');
+  const [toasts, setToasts] = useState<Toast[]>([]);
+
+  // Role is derived from the signed-in email every render, never stored.
+  const role: Role = session
+    ? ADMIN_EMAILS.map((e) => e.toLowerCase()).includes(session.email.toLowerCase())
+      ? 'admin'
+      : 'customer'
+    : 'guest';
+
+  const notify = useCallback((message: string) => {
+    const id = Date.now() + Math.random();
+    setToasts((t) => [...t, { id, message }]);
+    window.setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 3200);
+  }, []);
+
+  useEffect(() => {
+    const onFull = () => notify('Browser storage is full. Remove or shrink large images, then save again.');
+    window.addEventListener('vel-storage-error', onFull);
+    return () => window.removeEventListener('vel-storage-error', onFull);
+  }, [notify]);
+
+  const requireAdmin = (): boolean => {
+    if (role !== 'admin') {
+      notify('Administrator access required.');
+      return false;
+    }
+    return true;
+  };
+
+  /* ----- auth ----- */
+  // Re-check expiry every 30 s so an idle tab is signed out when its session runs out.
+  useEffect(() => {
+    const t = window.setInterval(() => setClock((n) => n + 1), 30_000);
+    return () => window.clearInterval(t);
+  }, []);
+  useEffect(() => {
+    if (storedSession && !session) setSession(null);
+  }, [storedSession, session, setSession]);
+
+  const startSession = (email: string, name: string) =>
+    setSession({ email, name, expiresAt: Date.now() + SESSION_HOURS * 3600_000 });
+
+  const GENERIC_LOGIN_ERROR = 'Incorrect email or password.';
+
+  const register = async (email: string, name: string, password: string): Promise<string | null> => {
+    const e = email.trim().toLowerCase();
+    if (!isValidEmail(e)) return 'Enter a valid email address.';
+    if (name.trim().length < 2) return 'Enter your name.';
+    const problems = passwordProblems(password);
+    if (problems.length > 0) return `Your password needs ${problems.join(', ')}.`;
+    if (users.some((u) => u.email === e)) return 'An account with this email already exists. Sign in instead.';
+    try {
+      const h = await hashPassword(password);
+      const user: UserRecord = {
+        email: e,
+        name: name.trim(),
+        ...h,
+        createdAt: new Date().toISOString(),
+        failed: 0,
+        lockedUntil: 0,
+      };
+      setUsers((prev) => (prev.some((u) => u.email === e) ? prev : [...prev, user]));
+      startSession(e, user.name);
+      return null;
+    } catch (err) {
+      return err instanceof Error ? err.message : 'Could not create the account.';
+    }
+  };
+
+  const login = async (email: string, password: string): Promise<string | null> => {
+    const e = email.trim().toLowerCase();
+    if (!isValidEmail(e) || !password) return GENERIC_LOGIN_ERROR;
+    const user = users.find((u) => u.email === e);
+    try {
+      if (!user) {
+        await hashPassword(password); // same work as a real check, so timing does not reveal unknown emails
+        return GENERIC_LOGIN_ERROR;
+      }
+      if (user.lockedUntil > Date.now()) {
+        const mins = Math.max(1, Math.ceil((user.lockedUntil - Date.now()) / 60000));
+        return `Too many failed attempts. Try again in ${mins} minute${mins === 1 ? '' : 's'}.`;
+      }
+      const h = await hashPassword(password, user.salt, user.iterations);
+      if (!timingSafeEqual(h.hash, user.hash)) {
+        const failed = user.failed + 1;
+        const lock = failed >= MAX_FAILED_LOGINS;
+        setUsers((prev) =>
+          prev.map((u) =>
+            u.email === e ? { ...u, failed: lock ? 0 : failed, lockedUntil: lock ? Date.now() + LOCKOUT_MINUTES * 60000 : u.lockedUntil } : u,
+          ),
+        );
+        return lock ? `Too many failed attempts. Sign-in is locked for ${LOCKOUT_MINUTES} minutes.` : GENERIC_LOGIN_ERROR;
+      }
+      setUsers((prev) => prev.map((u) => (u.email === e ? { ...u, failed: 0, lockedUntil: 0 } : u)));
+      startSession(e, user.name);
+      return null;
+    } catch (err) {
+      return err instanceof Error ? err.message : 'Could not sign in.';
+    }
+  };
+
+  const signOut = () => setSession(null);
+
+  /* ----- catalog (hidden products never reach the public) ----- */
+  const catalog = useMemo(() => products.filter((p) => !p.hidden), [products]);
+
+  /* ----- cart ----- */
+  const addToCart = (productId: string, qty = 1) => {
+    const p = catalog.find((x) => x.id === productId);
+    if (!p || !isAvailable(p)) {
+      notify('This product is out of stock.');
+      return;
+    }
+    setCart((prev) => {
+      const existing = prev.find((l) => l.productId === productId);
+      const nextQty = Math.min((existing?.qty ?? 0) + qty, p.stock);
+      if (existing) return prev.map((l) => (l.productId === productId ? { ...l, qty: nextQty } : l));
+      return [...prev, { productId, qty: Math.min(qty, p.stock) }];
+    });
+    notify(`${p.name} added to cart`);
+  };
+  const setQty = (productId: string, qty: number) => {
+    const p = catalog.find((x) => x.id === productId);
+    if (!p) return;
+    const q = Math.max(1, Math.min(Math.floor(qty) || 1, Math.max(p.stock, 1)));
+    setCart((prev) => prev.map((l) => (l.productId === productId ? { ...l, qty: q } : l)));
+  };
+  const removeFromCart = (productId: string) => setCart((prev) => prev.filter((l) => l.productId !== productId));
+
+  const cartDetail: CartDetail[] = useMemo(
+    () =>
+      cart
+        .map((line) => ({ line, product: catalog.find((p) => p.id === line.productId) }))
+        .filter((x): x is CartDetail => Boolean(x.product)),
+    [cart, catalog],
+  );
+  const cartCount = cartDetail.reduce((n, d) => n + d.line.qty, 0);
+  const subtotal = cartDetail.reduce((s, d) => s + d.product.price * d.line.qty, 0);
+  const totals = computeTotals(subtotal, settings, null, null);
+
+  /** Price the current cart with an optional coupon code and courier. */
+  const quote = (couponCode: string, courierId: string): Quote => {
+    const enabled = settings.couriers.filter((c) => c.enabled);
+    const courier = enabled.find((c) => c.id === courierId) ?? enabled[0] ?? null;
+    let coupon: Coupon | null = null;
+    let couponError = '';
+    if (couponCode.trim()) {
+      const r = evaluateCoupon(couponCode, subtotal, settings.coupons);
+      if (r.ok) coupon = r.coupon;
+      else couponError = r.error;
+    }
+    return { totals: computeTotals(subtotal, settings, coupon, courier), coupon, courier, couponError };
+  };
+
+  /* ----- checkout ----- */
+  const placeOrder = (ship: ShippingInfo, paymentId: string, courierId: string, couponCode: string): PlaceResult => {
+    if (!session) return { ok: false, error: 'Please sign in to place an order.' };
+    if (cartDetail.length === 0) return { ok: false, error: 'Your cart is empty.' };
+    for (const d of cartDetail) {
+      if (!isAvailable(d.product)) return { ok: false, error: `"${d.product.name}" is out of stock. Remove it from your cart.` };
+      if (d.line.qty > d.product.stock) {
+        return { ok: false, error: `Only ${d.product.stock} of "${d.product.name}" left in stock.` };
+      }
+    }
+    const payment = settings.payments.find((p) => p.enabled && p.id === paymentId);
+    if (!payment) return { ok: false, error: 'Choose a payment method.' };
+    const q = quote(couponCode, courierId);
+    if (couponCode.trim() && q.couponError) return { ok: false, error: q.couponError };
+    const hasCouriers = settings.couriers.some((c) => c.enabled);
+    if (hasCouriers && !q.courier) return { ok: false, error: 'Choose a delivery option.' };
+
+    const order: Order = {
+      id: orderId(),
+      createdAt: new Date().toISOString(),
+      customerEmail: session.email,
+      customerName: session.name,
+      items: cartDetail.map((d) => ({
+        productId: d.product.id,
+        name: d.product.name,
+        sku: d.product.sku,
+        price: d.product.price,
+        qty: d.line.qty,
+      })),
+      subtotal: q.totals.subtotal,
+      gst: q.totals.gst,
+      shipping: q.totals.shipping,
+      total: q.totals.total,
+      status: 'Placed',
+      payment: payment.label,
+      ship,
+      discount: q.totals.discount,
+      coupon: q.coupon?.code,
+      courier: q.courier?.name,
+    };
+    setProducts((prev) =>
+      prev.map((p) => {
+        const line = cart.find((l) => l.productId === p.id);
+        return line ? { ...p, stock: Math.max(0, p.stock - line.qty) } : p;
+      }),
+    );
+    setOrders((prev) => [order, ...prev]);
+    setCart([]);
+    return { ok: true, order };
+  };
+
+  /* ----- enquiries (open to every role) ----- */
+  const submitEnquiry = (e: Omit<Enquiry, 'id' | 'createdAt' | 'status'>): Enquiry => {
+    const enquiry: Enquiry = { ...e, id: uid('ENQ'), createdAt: new Date().toISOString(), status: 'New' };
+    setEnquiries((prev) => [enquiry, ...prev]);
+    return enquiry;
+  };
+
+  /* ----- admin-only mutations (each re-checks the role) ----- */
+  const saveProduct = (p: Product): boolean => {
+    if (!requireAdmin()) return false;
+    setProducts((prev) => (prev.some((x) => x.id === p.id) ? prev.map((x) => (x.id === p.id ? p : x)) : [p, ...prev]));
+    notify('Product saved');
+    return true;
+  };
+  const deleteProduct = (id: string) => {
+    if (!requireAdmin()) return;
+    setProducts((prev) => prev.filter((x) => x.id !== id));
+    setCart((prev) => prev.filter((l) => l.productId !== id));
+    notify('Product deleted');
+  };
+  const saveService = (s: Service): boolean => {
+    if (!requireAdmin()) return false;
+    setServices((prev) => (prev.some((x) => x.id === s.id) ? prev.map((x) => (x.id === s.id ? s : x)) : [...prev, s]));
+    notify('Service saved');
+    return true;
+  };
+  const deleteService = (id: string) => {
+    if (!requireAdmin()) return;
+    setServices((prev) => prev.filter((x) => x.id !== id));
+    notify('Service deleted');
+  };
+  const saveCompany = (c: Company): boolean => {
+    if (!requireAdmin()) return false;
+    setCompany(c);
+    notify('Company details updated');
+    return true;
+  };
+  const saveSettings = (s: Settings): boolean => {
+    if (!requireAdmin()) return false;
+    setSettings(s);
+    notify('Settings saved');
+    return true;
+  };
+  const setOrderStatus = (id: string, status: OrderStatus) => {
+    if (!requireAdmin()) return;
+    setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, status } : o)));
+  };
+  const setEnquiryStatus = (id: string, status: EnquiryStatus) => {
+    if (!requireAdmin()) return;
+    setEnquiries((prev) => prev.map((e) => (e.id === id ? { ...e, status } : e)));
+  };
+  const resetAll = () => {
+    if (!requireAdmin()) return;
+    setProducts(SEED_PRODUCTS);
+    setServices(SEED_SERVICES);
+    setCompany(SEED_COMPANY);
+    setSettings(SEED_SETTINGS);
+    setOrders([]);
+    setEnquiries([]);
+    setCart([]);
+    notify('Sample data restored');
+  };
+
+  const value: AppCtx = {
+    session,
+    role,
+    products,
+    catalog,
+    services,
+    company,
+    settings,
+    orders,
+    enquiries,
+    cart,
+    cartDetail,
+    cartCount,
+    totals,
+    quote,
+    prefill,
+    setPrefill,
+    toasts,
+    notify,
+    register,
+    login,
+    signOut,
+    addToCart,
+    setQty,
+    removeFromCart,
+    placeOrder,
+    submitEnquiry,
+    saveProduct,
+    deleteProduct,
+    saveService,
+    deleteService,
+    saveCompany,
+    saveSettings,
+    setOrderStatus,
+    setEnquiryStatus,
+    resetAll,
+  };
+
+  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+}
+
+// ---- src/components/ui.tsx ----
+
+const ICONS: Record<string, string> = {
+  cart: 'M3 4h2.2l2.2 10.5a1 1 0 0 0 1 .8h8.6a1 1 0 0 0 1-.8L19.5 8H6 M9.5 19.5h.01 M16.5 19.5h.01',
+  menu: 'M4 7h16 M4 12h16 M4 17h16',
+  x: 'M6 6l12 12 M18 6L6 18',
+  wrench: 'M14.7 6.3a4 4 0 0 0-5 5L4 17l3 3 5.7-5.7a4 4 0 0 0 5-5l-2.4 2.4-2.3-.6-.6-2.3z',
+  store: 'M4 9l1.5-5h13L20 9 M4 9v11h16V9 M9 20v-6h6v6 M4 9c0 1.7 1.3 3 2.7 3S9.3 10.7 9.3 9c0 1.7 1.3 3 2.7 3s2.7-1.3 2.7-3c0 1.7 1.3 3 2.7 3S20 10.7 20 9',
+  factory: 'M3 20V10l6 4v-4l6 4V4h4v16z',
+  phone: 'M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a1 1 0 0 1-1 1A16 16 0 0 1 4 5a1 1 0 0 1 1-1z',
+  check: 'M5 12.5l4.5 4.5L19 7.5',
+  search: 'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14z M20 20l-4-4',
+  chevron: 'M9 6l6 6-6 6',
+  user: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z M4 20c0-3.5 3.6-6 8-6s8 2.5 8 6',
+  shield: 'M12 3l7 3v5c0 5-3 8-7 10-4-2-7-5-7-10V6z',
+  plus: 'M12 5v14 M5 12h14',
+  edit: 'M4 20h4L19 9l-4-4L4 16z',
+  trash: 'M5 7h14 M10 7V4h4v3 M7 7l1 13h8l1-13',
+  pin: 'M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11z M12 12a2 2 0 1 0 0-4 2 2 0 0 0 0 4z',
+  clock: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z M12 7v5l3 2',
+  mail: 'M4 6h16v12H4z M4 7l8 6 8-6',
+  box: 'M3 8l9-5 9 5v8l-9 5-9-5z M3 8l9 5 9-5 M12 13v8',
+  minus: 'M5 12h14',
+};
+
+function Icon({ name, className = 'h-5 w-5' }: { name: string; className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.7}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <path d={ICONS[name] ?? ICONS.box} />
+    </svg>
+  );
+}
+
+function Modal({
+  title,
+  onClose,
+  children,
+  wide = false,
+}: {
+  title: string;
+  onClose: () => void;
+  children: ReactNode;
+  wide?: boolean;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    document.body.style.overflow = 'hidden';
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.body.style.overflow = '';
+    };
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-ink/60 sm:items-center sm:p-6"
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
+        className={`max-h-[92vh] w-full overflow-y-auto bg-white shadow-2xl sm:rounded-sm ${wide ? 'sm:max-w-3xl' : 'sm:max-w-lg'}`}
+      >
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-steel-200 bg-white px-5 py-3">
+          <h2 className="text-2xl font-semibold">{title}</h2>
+          <button type="button" onClick={onClose} className="rounded-sm p-1.5 text-ink-500 hover:bg-steel-100" aria-label="Close">
+            <Icon name="x" />
+          </button>
+        </div>
+        <div className="p-5">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function Field({
+  label,
+  htmlFor,
+  error,
+  hint,
+  children,
+}: {
+  label: string;
+  htmlFor: string;
+  error?: string;
+  hint?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div>
+      <label htmlFor={htmlFor} className="label">
+        {label}
+      </label>
+      {children}
+      {hint && !error ? <p className="mt-1 text-xs text-steel-500">{hint}</p> : null}
+      {error ? (
+        <p className="mt-1 text-xs font-medium text-bad" role="alert">
+          {error}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+const BADGE_TONES: Record<string, string> = {
+  Placed: 'bg-steel-100 text-ink-700',
+  Processing: 'bg-forge-tint text-forge-dark',
+  Shipped: 'bg-blue-50 text-blue-800',
+  Delivered: 'bg-green-50 text-ok',
+  Cancelled: 'bg-red-50 text-bad',
+  New: 'bg-forge-tint text-forge-dark',
+  Contacted: 'bg-blue-50 text-blue-800',
+  Scheduled: 'bg-steel-100 text-ink-700',
+  Closed: 'bg-green-50 text-ok',
+};
+
+function Badge({ children, tone }: { children: ReactNode; tone?: string }) {
+  const cls = tone ?? BADGE_TONES[String(children)] ?? 'bg-steel-100 text-ink-700';
+  return <span className={`inline-block rounded-sm px-2 py-0.5 text-xs font-semibold ${cls}`}>{children}</span>;
+}
+
+/** Product photo when the owner uploaded one, otherwise a blueprint-style placeholder. */
+function ProductArt({ seed, className = '', image }: { seed: string; className?: string; image?: string }) {
+  if (image) {
+    return (
+      <div className={`relative overflow-hidden bg-white ${className}`}>
+        <img src={image} alt="" className="h-full w-full object-contain" />
+      </div>
+    );
+  }
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) % 997;
+  const teeth = 14 + (h % 10);
+  const circumference = 2 * Math.PI * 34;
+  const dash = circumference / (teeth * 2);
+  const rotate = h % 45;
+  return (
+    <div className={`relative overflow-hidden bg-steel-100 ${className}`}>
+      <svg viewBox="0 0 200 140" className="h-full w-full text-ink-500" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+        <defs>
+          <pattern id={`grid-${seed}`} width="20" height="20" patternUnits="userSpaceOnUse">
+            <path d="M20 0H0V20" fill="none" stroke="#B3BFCD" strokeWidth="0.6" />
+          </pattern>
+        </defs>
+        <rect width="200" height="140" fill={`url(#grid-${seed})`} />
+        <g transform={`translate(100 70) rotate(${rotate})`} fill="none" stroke="currentColor">
+          <circle r="34" strokeWidth="12" strokeDasharray={`${dash} ${dash}`} />
+          <circle r="27" strokeWidth="1.5" />
+          <circle r="12" strokeWidth="1.5" />
+          <path d="M-46 0H46 M0 -46V46" strokeWidth="0.8" strokeDasharray="4 3" />
+        </g>
+      </svg>
+    </div>
+  );
+}
+
+function PageHeader({
+  eyebrow,
+  title,
+  lead,
+  children,
+}: {
+  eyebrow: string;
+  title: string;
+  lead?: string;
+  children?: ReactNode;
+}) {
+  return (
+    <section className="blueprint bg-ink text-white">
+      <div className="wrap py-12 md:py-16">
+        <p className="font-mono text-xs font-medium uppercase tracking-[0.16em] text-[#F2B26B]">{eyebrow}</p>
+        <h1 className="mt-2 max-w-3xl text-5xl font-semibold leading-[0.95] md:text-6xl">{title}</h1>
+        {lead ? <p className="mt-4 max-w-2xl text-lg text-steel-200">{lead}</p> : null}
+        {children}
+      </div>
+    </section>
+  );
+}
+
+function ConfirmDelete({ onConfirm, name }: { onConfirm: () => void; name: string }) {
+  const [asking, setAsking] = useState(false);
+  if (!asking) {
+    return (
+      <button type="button" className="inline-flex items-center gap-1 text-sm font-semibold text-bad hover:underline" onClick={() => setAsking(true)} aria-label={`Delete ${name}`}>
+        <Icon name="trash" className="h-4 w-4" /> Delete
+      </button>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-2">
+      <button type="button" className="btn-danger !px-2.5 !py-1" onClick={onConfirm}>
+        Confirm delete
+      </button>
+      <button type="button" className="text-sm font-semibold hover:underline" onClick={() => setAsking(false)}>
+        Cancel
+      </button>
+    </span>
+  );
+}
+
+/** Upload, preview and remove an image. Files are resized in the browser before saving. */
+function ImagePicker({
+  id,
+  label,
+  value,
+  onChange,
+  maxDim,
+  mime,
+  hint,
+  previewClass = 'h-28 w-28',
+}: {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (dataUrl: string) => void;
+  maxDim: number;
+  mime: 'image/jpeg' | 'image/png';
+  hint?: string;
+  previewClass?: string;
+}) {
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const pick = async (file: File | undefined) => {
+    if (!file) return;
+    setBusy(true);
+    setError('');
+    try {
+      onChange(await resizeImage(file, maxDim, mime));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Upload failed.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div>
+      <label htmlFor={id} className="label">
+        {label}
+      </label>
+      <div className="flex flex-wrap items-center gap-4">
+        <div className={`flex shrink-0 items-center justify-center border border-dashed border-steel-300 bg-steel-50 ${previewClass}`}>
+          {value ? <img src={value} alt="" className="max-h-full max-w-full object-contain" /> : <Icon name="box" className="h-8 w-8 text-steel-300" />}
+        </div>
+        <div className="space-y-2">
+          <input
+            id={id}
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/svg+xml"
+            className="block max-w-[15rem] text-sm file:mr-3 file:rounded-sm file:border file:border-steel-300 file:bg-white file:px-3 file:py-1.5 file:text-sm file:font-semibold hover:file:bg-steel-100"
+            onChange={(e) => {
+              void pick(e.target.files?.[0]);
+              e.target.value = '';
+            }}
+          />
+          {value ? (
+            <button type="button" className="text-sm font-semibold text-bad hover:underline" onClick={() => onChange('')}>
+              Remove image
+            </button>
+          ) : null}
+          {busy ? <p className="text-xs text-ink-500">Processing image…</p> : null}
+        </div>
+      </div>
+      {hint && !error ? <p className="mt-1 text-xs text-steel-500">{hint}</p> : null}
+      {error ? (
+        <p className="mt-1 text-xs font-medium text-bad" role="alert">
+          {error}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function Stepper({
+  value,
+  max,
+  onChange,
+  label,
+}: {
+  value: number;
+  max: number;
+  onChange: (n: number) => void;
+  label: string;
+}) {
+  return (
+    <div className="inline-flex items-center border border-steel-300 bg-white" role="group" aria-label={label}>
+      <button
+        type="button"
+        className="px-2.5 py-2 text-ink hover:bg-steel-100 disabled:opacity-40"
+        onClick={() => onChange(value - 1)}
+        disabled={value <= 1}
+        aria-label="Decrease quantity"
+      >
+        <Icon name="minus" className="h-4 w-4" />
+      </button>
+      <span className="min-w-[2.5rem] text-center font-mono text-sm tabular-nums" aria-live="polite">
+        {value}
+      </span>
+      <button
+        type="button"
+        className="px-2.5 py-2 text-ink hover:bg-steel-100 disabled:opacity-40"
+        onClick={() => onChange(value + 1)}
+        disabled={value >= max}
+        aria-label="Increase quantity"
+      >
+        <Icon name="plus" className="h-4 w-4" />
+      </button>
+    </div>
+  );
+}
+
+// ---- src/components/Layout.tsx ----
+
+const NAV: { to: RouteId; label: string }[] = [
+  { to: 'home', label: 'Home' },
+  { to: 'service-center', label: 'Vel Service Center' },
+  { to: 'store', label: 'Vel Store' },
+  { to: 'manufacturing', label: 'Vel Manufacturing' },
+  { to: 'service-enquiry', label: 'Service Enquiry' },
+];
+
+function Logo({ light = false }: { light?: boolean }) {
+  const { settings, company } = useApp();
+  const words = company.name.trim().split(/\s+/);
+  const first = words[0] ?? '';
+  const rest = words.slice(1).join(' ');
+  return (
+    <span className="inline-flex items-center gap-2.5">
+      {settings.logo ? (
+        <img
+          src={settings.logo}
+          alt=""
+          className={`h-9 w-auto max-w-[140px] object-contain ${light ? 'bg-white p-1' : ''}`}
+        />
+      ) : (
+        <svg viewBox="0 0 32 32" className="h-8 w-8" aria-hidden="true">
+          <rect width="32" height="32" fill={light ? '#FFFFFF' : '#12233A'} />
+          <path d="M6 7h5l5 13 5-13h5L18.5 26h-5z" fill="#B45309" />
+        </svg>
+      )}
+      <span className={`font-display text-2xl font-semibold uppercase tracking-wide ${light ? 'text-white' : 'text-ink'}`}>
+        {first} {rest ? <span className="text-forge">{rest}</span> : null}
+      </span>
+    </span>
+  );
+}
+
+function Header({ route }: { route: RouteId }) {
+  const { company, cartCount, session, role, signOut } = useApp();
+  const [open, setOpen] = useState(false);
+
+  const linkCls = (active: boolean) =>
+    `block px-3 py-2 text-sm font-semibold transition-colors ${
+      active ? 'text-forge-dark lg:border-b-2 lg:border-forge' : 'text-ink hover:text-forge-dark'
+    }`;
+
+  return (
+    <header className="sticky top-0 z-40 border-b border-steel-200 bg-white">
+      <div className="bg-ink text-xs text-steel-200">
+        <div className="wrap flex flex-wrap items-center justify-between gap-x-6 gap-y-1 py-1.5">
+          <span className="inline-flex items-center gap-1.5">
+            <Icon name="clock" className="h-3.5 w-3.5" /> {company.hours}
+          </span>
+          <span className="inline-flex items-center gap-1.5 font-mono">
+            <Icon name="phone" className="h-3.5 w-3.5" /> {company.phone}
+          </span>
+        </div>
+      </div>
+
+      <div className="wrap flex items-center justify-between py-3">
+        <a href="#home" aria-label="Vel Groups home" onClick={() => setOpen(false)}>
+          <Logo />
+        </a>
+
+        <nav className="hidden items-center lg:flex" aria-label="Primary">
+          {NAV.map((n) => (
+            <a key={n.to} href={'#' + n.to} className={linkCls(route === n.to)} aria-current={route === n.to ? 'page' : undefined}>
+              {n.label}
+            </a>
+          ))}
+          {role === 'admin' ? (
+            <a href="#admin" className={linkCls(route === 'admin')}>
+              <span className="inline-flex items-center gap-1">
+                <Icon name="shield" className="h-4 w-4" /> Management
+              </span>
+            </a>
+          ) : null}
+        </nav>
+
+        <div className="flex items-center gap-2">
+          <a href="#cart" className="btn-ghost relative !px-3" aria-label={`Cart, ${cartCount} items`}>
+            <Icon name="cart" />
+            {cartCount > 0 ? (
+              <span className="absolute -right-1.5 -top-1.5 min-w-[1.25rem] rounded-full bg-forge px-1 text-center font-mono text-[11px] font-semibold leading-5 text-white">
+                {cartCount}
+              </span>
+            ) : null}
+          </a>
+          {session ? (
+            <button type="button" className="btn-ghost hidden sm:inline-flex" onClick={() => { signOut(); go('home'); }}>
+              <Icon name="user" className="h-4 w-4" /> Sign out
+            </button>
+          ) : (
+            <a href="#login" className="btn-dark hidden sm:inline-flex">
+              Sign in
+            </a>
+          )}
+          <button
+            type="button"
+            className="btn-ghost !px-3 lg:hidden"
+            aria-label={open ? 'Close menu' : 'Open menu'}
+            aria-expanded={open}
+            onClick={() => setOpen((v) => !v)}
+          >
+            <Icon name={open ? 'x' : 'menu'} />
+          </button>
+        </div>
+      </div>
+
+      {open ? (
+        <nav className="border-t border-steel-200 bg-white lg:hidden" aria-label="Mobile">
+          <div className="wrap py-2">
+            {NAV.map((n) => (
+              <a key={n.to} href={'#' + n.to} className={linkCls(route === n.to)} onClick={() => setOpen(false)}>
+                {n.label}
+              </a>
+            ))}
+            {role === 'admin' ? (
+              <a href="#admin" className={linkCls(route === 'admin')} onClick={() => setOpen(false)}>
+                Management Dashboard
+              </a>
+            ) : null}
+            {session ? (
+              <button type="button" className={linkCls(false) + ' w-full text-left'} onClick={() => { signOut(); setOpen(false); go('home'); }}>
+                Sign out ({session.email})
+              </button>
+            ) : (
+              <a href="#login" className={linkCls(false)} onClick={() => setOpen(false)}>
+                Sign in
+              </a>
+            )}
+          </div>
+        </nav>
+      ) : null}
+    </header>
+  );
+}
+
+function Footer() {
+  const { company } = useApp();
+  return (
+    <footer className="mt-20 bg-ink text-steel-200">
+      <div className="wrap grid gap-10 py-12 md:grid-cols-[1.4fr_1fr_1fr]">
+        <div className="min-w-0">
+          <Logo light />
+          <p className="mt-4 max-w-sm text-sm">{company.about}</p>
+        </div>
+        <div className="min-w-0">
+          <h2 className="font-mono text-xs uppercase tracking-[0.16em] text-[#F2B26B]">Divisions</h2>
+          <ul className="mt-3 space-y-2 text-sm">
+            {NAV.slice(1).map((n) => (
+              <li key={n.to}>
+                <a href={'#' + n.to} className="hover:text-white">
+                  {n.label}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div className="min-w-0">
+          <h2 className="font-mono text-xs uppercase tracking-[0.16em] text-[#F2B26B]">Contact</h2>
+          <ul className="mt-3 space-y-2 text-sm">
+            <li className="flex gap-2"><Icon name="phone" className="mt-0.5 h-4 w-4 shrink-0" /> <span className="font-mono">{company.phone}</span></li>
+            {company.altPhone ? <li className="flex gap-2"><Icon name="phone" className="mt-0.5 h-4 w-4 shrink-0" /> <span className="font-mono">{company.altPhone}</span></li> : null}
+            <li className="flex gap-2"><Icon name="mail" className="mt-0.5 h-4 w-4 shrink-0" /> <span className="break-all">{company.email}</span></li>
+            <li className="flex gap-2"><Icon name="pin" className="mt-0.5 h-4 w-4 shrink-0" /> <span>{company.address}</span></li>
+          </ul>
+        </div>
+      </div>
+      <div className="border-t border-white/10 py-4 text-center text-xs text-steel-300">
+        © {new Date().getFullYear()} {company.name}. All rights reserved.
+      </div>
+    </footer>
+  );
+}
+
+function Toasts() {
+  const { toasts } = useApp();
+  return (
+    <div className="pointer-events-none fixed bottom-4 right-4 z-[60] flex max-w-[calc(100vw-2rem)] flex-col gap-2" aria-live="polite">
+      {toasts.map((t) => (
+        <div key={t.id} className="pointer-events-auto flex items-center gap-2 rounded-sm bg-ink px-4 py-3 text-sm text-white shadow-lg">
+          <Icon name="check" className="h-4 w-4 shrink-0 text-[#F2B26B]" /> {t.message}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ---- src/pages/Home.tsx ----
+
+function Home() {
+  const { company, catalog, services, addToCart } = useApp();
+  const featured = catalog.filter((p) => p.featured && isAvailable(p)).slice(0, 4);
+
+  const divisions: { to: RouteId; icon: string; title: string; text: string; meta: string }[] = [
+    {
+      to: 'service-center',
+      icon: 'wrench',
+      title: 'Vel Service Center',
+      text: 'Maintenance contracts, overhauls and on-site breakdown support.',
+      meta: `${services.length} service lines`,
+    },
+    {
+      to: 'store',
+      icon: 'store',
+      title: 'Vel Store',
+      text: 'Pumps, motors, drives, bearings and tooling with GST invoices.',
+      meta: `${catalog.length} products listed`,
+    },
+    {
+      to: 'manufacturing',
+      icon: 'factory',
+      title: 'Vel Manufacturing Company',
+      text: 'Power packs, fabrications and machined parts built to your drawing.',
+      meta: company.manufacturing.certifications[0] ?? 'Custom builds',
+    },
+    {
+      to: 'service-enquiry',
+      icon: 'mail',
+      title: 'Service Enquiry',
+      text: 'Describe the fault or the part. We call back the same working day.',
+      meta: company.phone,
+    },
+  ];
+
+  return (
+    <>
+      <section className="blueprint bg-ink text-white">
+        <div className="wrap grid gap-10 py-14 md:py-20 lg:grid-cols-[1.25fr_1fr] lg:items-center">
+          <div className="min-w-0">
+            <p className="font-mono text-xs font-medium uppercase tracking-[0.16em] text-[#F2B26B]">Industrial conglomerate</p>
+            <h1 className="mt-3 text-6xl font-semibold uppercase leading-[0.9] md:text-8xl">
+              {company.name}
+            </h1>
+            <p className="mt-5 max-w-xl text-xl text-steel-200">{company.tagline}</p>
+            <div className="mt-8 flex flex-wrap gap-3">
+              <a href="#store" className="btn-primary">
+                Shop the store
+              </a>
+              <a href="#service-enquiry" className="btn border border-white/40 text-white hover:bg-white/10">
+                Request service
+              </a>
+            </div>
+          </div>
+
+          <div className="min-w-0 border border-white/20 bg-ink-700/60">
+            <p className="border-b border-white/20 px-5 py-3 font-mono text-xs uppercase tracking-[0.16em] text-steel-300">
+              Division index
+            </p>
+            <ul>
+              {divisions.map((d, i) => (
+                <li key={d.to} className={i > 0 ? 'border-t border-white/10' : ''}>
+                  <a href={'#' + d.to} className="group flex items-center gap-4 px-5 py-4 hover:bg-white/5">
+                    <Icon name={d.icon} className="h-6 w-6 shrink-0 text-[#F2B26B]" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block font-display text-xl font-semibold uppercase tracking-wide">{d.title}</span>
+                      <span className="block truncate font-mono text-xs text-steel-300">{d.meta}</span>
+                    </span>
+                    <Icon name="chevron" className="h-5 w-5 shrink-0 text-steel-300 transition-transform group-hover:translate-x-1" />
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section className="border-b border-steel-200 bg-white">
+        <dl className="wrap grid grid-cols-2 gap-y-6 py-8 md:grid-cols-4">
+          {company.manufacturing.stats.map((s) => (
+            <div key={s.label} className="min-w-0 border-l-2 border-forge pl-4">
+              <dd className="font-display text-4xl font-semibold tabular-nums">{s.value}</dd>
+              <dt className="text-sm text-ink-500">{s.label}</dt>
+            </div>
+          ))}
+        </dl>
+      </section>
+
+      <section className="wrap mt-16">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="eyebrow">From the store</p>
+            <h2 className="mt-1 text-4xl font-semibold md:text-5xl">Featured products</h2>
+          </div>
+          <a href="#store" className="btn-ghost">
+            View all products
+          </a>
+        </div>
+        <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {featured.map((p) => (
+            <article key={p.id} className="panel flex min-w-0 flex-col">
+              <ProductArt seed={p.id} image={p.image} className="h-36" />
+              <div className="flex flex-1 flex-col p-4">
+                <p className="font-mono text-xs uppercase tracking-wider text-ink-500">{p.category}</p>
+                <h3 className="mt-1 text-xl font-semibold leading-tight">{p.name}</h3>
+                <p className="mt-3 flex items-baseline gap-2">
+                  <span className="text-xl font-bold tabular-nums">{inr(p.price)}</span>
+                  {p.mrp > p.price ? (
+                    <>
+                      <span className="text-sm tabular-nums text-steel-500 line-through">{inr(p.mrp)}</span>
+                      <span className="text-xs font-semibold text-ok">{discountPct(p.price, p.mrp)}% off</span>
+                    </>
+                  ) : null}
+                </p>
+                <div className="mt-auto flex gap-2 pt-4">
+                  <button type="button" className="btn-ghost flex-1" onClick={() => addToCart(p.id)}>
+                    Add to cart
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-primary flex-1"
+                    onClick={() => {
+                      addToCart(p.id);
+                      go('checkout');
+                    }}
+                  >
+                    Shop now
+                  </button>
+                </div>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="wrap mt-16 grid gap-8 lg:grid-cols-[1fr_1.2fr]">
+        <div className="min-w-0">
+          <p className="eyebrow">Vel Service Center</p>
+          <h2 className="mt-1 text-4xl font-semibold md:text-5xl">Keep the line running</h2>
+          <p className="mt-3 max-w-md text-ink-500">{company.about}</p>
+          <a href="#service-center" className="btn-dark mt-5">
+            See all services
+          </a>
+        </div>
+        <ul className="panel divide-y divide-steel-200">
+          {services.slice(0, 4).map((s) => (
+            <li key={s.id} className="flex items-center justify-between gap-4 px-5 py-4">
+              <div className="min-w-0">
+                <p className="font-semibold">{s.name}</p>
+                <p className="font-mono text-xs text-ink-500">{s.turnaround}</p>
+              </div>
+              <p className="shrink-0 text-right text-sm">
+                <span className="block text-xs text-steel-500">from</span>
+                <span className="font-bold tabular-nums">{inr(s.priceFrom)}</span>
+              </p>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <section className="wrap mt-16">
+        <div className="flex flex-col items-start justify-between gap-4 bg-forge-tint p-8 md:flex-row md:items-center">
+          <div>
+            <h2 className="text-3xl font-semibold md:text-4xl">Need help choosing a part or a service?</h2>
+            <p className="mt-1 text-ink-700">
+              Call <span className="font-mono font-medium">{company.phone}</span>, {company.hours}.
+            </p>
+          </div>
+          <a href="#service-enquiry" className="btn-primary shrink-0">
+            Send an enquiry
+          </a>
+        </div>
+      </section>
+    </>
+  );
+}
+
+// ---- src/pages/ServiceCenter.tsx ----
+
+const STEPS = [
+  { title: 'Report the fault', text: 'Call or send an enquiry with the machine, location and symptoms.' },
+  { title: 'Diagnose and quote', text: 'An engineer inspects on site or in our workshop and issues a written quote.' },
+  { title: 'Repair', text: 'Work starts after approval. Replaced parts are returned on request.' },
+  { title: 'Test and report', text: 'Load test, readings and a service report are handed over with the machine.' },
+];
+
+function ServiceCenter() {
+  const { services, company, setPrefill } = useApp();
+
+  return (
+    <>
+      <PageHeader
+        eyebrow="Vel Service Center"
+        title="Repair, overhaul and on-site support"
+        lead="Factory-trained engineers for motors, hydraulics, machine tools and fabricated equipment."
+      />
+
+      <div className="wrap mt-10 grid gap-8 lg:grid-cols-[1fr_320px]">
+        <section className="min-w-0" aria-label="Services">
+          <ul className="panel divide-y divide-steel-200">
+            {services.length === 0 ? (
+              <li className="p-6 text-ink-500">No services are listed right now. Please call {company.phone}.</li>
+            ) : null}
+            {services.map((s) => (
+              <li key={s.id} className="grid gap-4 p-5 md:grid-cols-[1fr_auto] md:items-center">
+                <div className="min-w-0">
+                  <h2 className="text-2xl font-semibold">{s.name}</h2>
+                  <p className="mt-1 max-w-2xl text-ink-700">{s.description}</p>
+                  <ul className="mt-3 flex flex-wrap gap-1.5">
+                    {s.coverage.map((c) => (
+                      <li key={c} className="rounded-sm bg-steel-100 px-2 py-0.5 font-mono text-xs text-ink-700">
+                        {c}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <div className="flex items-center justify-between gap-6 md:flex-col md:items-end md:justify-center">
+                  <p className="text-left md:text-right">
+                    <span className="block text-xs text-steel-500">Starting at</span>
+                    <span className="text-2xl font-bold tabular-nums">{inr(s.priceFrom)}</span>
+                    <span className="block font-mono text-xs text-ink-500">{s.turnaround}</span>
+                  </p>
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    onClick={() => {
+                      setPrefill(s.name);
+                      go('service-enquiry');
+                    }}
+                  >
+                    Request this service
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+
+          <h2 className="mt-12 text-3xl font-semibold">How a service job runs</h2>
+          <ol className="mt-4 grid gap-4 sm:grid-cols-2">
+            {STEPS.map((s, i) => (
+              <li key={s.title} className="panel p-5">
+                <span className="font-mono text-xs text-forge-dark">STEP {i + 1}</span>
+                <h3 className="mt-1 text-xl font-semibold">{s.title}</h3>
+                <p className="mt-1 text-sm text-ink-700">{s.text}</p>
+              </li>
+            ))}
+          </ol>
+        </section>
+
+        <aside className="min-w-0 lg:sticky lg:top-32 lg:self-start">
+          <div className="bg-ink p-6 text-white">
+            <h2 className="text-2xl font-semibold uppercase tracking-wide">Service desk</h2>
+            <ul className="mt-4 space-y-3 text-sm">
+              <li className="flex gap-2">
+                <Icon name="phone" className="mt-0.5 h-4 w-4 shrink-0 text-[#F2B26B]" />
+                <span className="font-mono">{company.phone}</span>
+              </li>
+              <li className="flex gap-2">
+                <Icon name="clock" className="mt-0.5 h-4 w-4 shrink-0 text-[#F2B26B]" />
+                {company.hours}
+              </li>
+              <li className="flex gap-2">
+                <Icon name="pin" className="mt-0.5 h-4 w-4 shrink-0 text-[#F2B26B]" />
+                {company.address}
+              </li>
+            </ul>
+            <a href="#service-enquiry" className="btn-primary mt-5 w-full">
+              Send a service enquiry
+            </a>
+          </div>
+        </aside>
+      </div>
+    </>
+  );
+}
+
+// ---- src/pages/Store.tsx ----
+
+type SortKey = 'featured' | 'price-asc' | 'price-desc' | 'name';
+
+function StockLabel({ p }: { p: Product }) {
+  if (!isAvailable(p)) return <span className="text-sm font-semibold text-bad">Out of stock</span>;
+  if (p.stock <= 5) return <span className="text-sm font-semibold text-forge-dark">Only {p.stock} left</span>;
+  return (
+    <span className="text-sm font-semibold text-ok">
+      In stock <span className="font-mono font-normal text-ink-500">({p.stock} {p.unit}s)</span>
+    </span>
+  );
+}
+
+function ProductDetail({ product, onClose }: { product: Product; onClose: () => void }) {
+  const { addToCart, settings } = useApp();
+  const [qty, setQty] = useState(1);
+  const out = !isAvailable(product);
+
+  return (
+    <Modal title={product.name} onClose={onClose} wide>
+      <div className="grid gap-6 md:grid-cols-[1fr_1.1fr]">
+        <div className="min-w-0">
+          <ProductArt seed={product.id} image={product.image} className="h-56 border border-steel-200" />
+          <p className="mt-3 font-mono text-xs text-ink-500">SKU {product.sku}</p>
+          <p className="font-mono text-xs text-ink-500">
+            {product.brand} · {product.category}
+          </p>
+        </div>
+        <div className="min-w-0">
+          <p className="flex flex-wrap items-baseline gap-2">
+            <span className="text-3xl font-bold tabular-nums">{inr(product.price)}</span>
+            {product.mrp > product.price ? (
+              <>
+                <span className="tabular-nums text-steel-500 line-through">{inr(product.mrp)}</span>
+                <span className="text-sm font-semibold text-ok">{discountPct(product.price, product.mrp)}% off</span>
+              </>
+            ) : null}
+          </p>
+          <p className="text-xs text-ink-500">per {product.unit}, excluding {settings.gstRate}% GST</p>
+          <p className="mt-2">
+            <StockLabel p={product} />
+          </p>
+          <p className="mt-4 text-ink-700">{product.description}</p>
+
+          <div className="mt-5 flex flex-wrap items-center gap-3">
+            <Stepper value={qty} max={Math.max(product.stock, 1)} onChange={setQty} label="Quantity" />
+            <button
+              type="button"
+              className="btn-ghost"
+              disabled={out}
+              onClick={() => {
+                addToCart(product.id, qty);
+                onClose();
+              }}
+            >
+              Add to cart
+            </button>
+            <button
+              type="button"
+              className="btn-primary"
+              disabled={out}
+              onClick={() => {
+                addToCart(product.id, qty);
+                onClose();
+                go('checkout');
+              }}
+            >
+              Shop now
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <h3 className="mt-6 text-xl font-semibold">Specifications</h3>
+      <div className="mt-2 overflow-x-auto border border-steel-200">
+        <table className="w-full text-sm">
+          <tbody>
+            {product.specs.map((s, i) => (
+              <tr key={s.label + i} className={i % 2 ? 'bg-steel-50' : 'bg-white'}>
+                <th scope="row" className="w-2/5 px-3 py-2 text-left font-semibold text-ink-700">
+                  {s.label}
+                </th>
+                <td className="px-3 py-2 font-mono">{s.value}</td>
+              </tr>
+            ))}
+            <tr className={product.specs.length % 2 ? 'bg-steel-50' : 'bg-white'}>
+              <th scope="row" className="px-3 py-2 text-left font-semibold text-ink-700">
+                Pack / unit
+              </th>
+              <td className="px-3 py-2 font-mono">1 {product.unit}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </Modal>
+  );
+}
+
+function Store() {
+  const { catalog: products, addToCart, settings } = useApp();
+  const [query, setQuery] = useState('');
+  const [category, setCategory] = useState('All');
+  const [sort, setSort] = useState<SortKey>('featured');
+  const [inStockOnly, setInStockOnly] = useState(false);
+  const [openId, setOpenId] = useState<string | null>(null);
+
+  const categories = useMemo(() => ['All', ...Array.from(new Set(products.map((p) => p.category))).sort()], [products]);
+
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    let list = products.filter((p) => {
+      if (category !== 'All' && p.category !== category) return false;
+      if (inStockOnly && !isAvailable(p)) return false;
+      if (!q) return true;
+      return [p.name, p.sku, p.brand, p.category].some((v) => v.toLowerCase().includes(q));
+    });
+    if (sort === 'price-asc') list = [...list].sort((a, b) => a.price - b.price);
+    if (sort === 'price-desc') list = [...list].sort((a, b) => b.price - a.price);
+    if (sort === 'name') list = [...list].sort((a, b) => a.name.localeCompare(b.name));
+    if (sort === 'featured') list = [...list].sort((a, b) => Number(b.featured) - Number(a.featured));
+    return list;
+  }, [products, query, category, sort, inStockOnly]);
+
+  const open = products.find((p) => p.id === openId) ?? null;
+
+  return (
+    <>
+      <PageHeader
+        eyebrow="Vel Store"
+        title="Industrial components, shipped to site"
+        lead={`Prices are per unit and exclude ${settings.gstRate}% GST.${settings.freeShippingAbove > 0 ? ` Orders above ${inr(settings.freeShippingAbove)} ship free.` : ''}`}
+      />
+
+      <div className="wrap mt-8 grid gap-8 lg:grid-cols-[250px_1fr]">
+        <aside className="min-w-0 space-y-6 lg:sticky lg:top-32 lg:self-start" aria-label="Filters">
+          <div>
+            <label htmlFor="store-search" className="label">
+              Search
+            </label>
+            <div className="relative">
+              <Icon name="search" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-steel-500" />
+              <input
+                id="store-search"
+                className="field !pl-9"
+                placeholder="Name, SKU or brand"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div>
+            <p className="label">Category</p>
+            <div className="flex flex-wrap gap-1.5 lg:flex-col lg:gap-0">
+              {categories.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => setCategory(c)}
+                  aria-pressed={category === c}
+                  className={`px-3 py-1.5 text-left text-sm lg:border-l-2 ${
+                    category === c
+                      ? 'bg-ink font-semibold text-white lg:border-forge lg:bg-transparent lg:text-forge-dark'
+                      : 'bg-white text-ink hover:bg-steel-100 lg:border-steel-200 lg:bg-transparent'
+                  }`}
+                >
+                  {c}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label htmlFor="store-sort" className="label">
+              Sort by
+            </label>
+            <select id="store-sort" className="field" value={sort} onChange={(e) => setSort(e.target.value as SortKey)}>
+              <option value="featured">Featured first</option>
+              <option value="price-asc">Price: low to high</option>
+              <option value="price-desc">Price: high to low</option>
+              <option value="name">Name</option>
+            </select>
+          </div>
+
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              id="store-instock"
+              type="checkbox"
+              className="h-4 w-4 accent-[#B45309]"
+              checked={inStockOnly}
+              onChange={(e) => setInStockOnly(e.target.checked)}
+            />
+            In stock only
+          </label>
+        </aside>
+
+        <section className="min-w-0" aria-label="Products">
+          <p className="mb-3 font-mono text-xs text-ink-500" aria-live="polite">
+            {visible.length} of {products.length} products
+          </p>
+
+          {visible.length === 0 ? (
+            <div className="panel p-8 text-center">
+              <p className="text-xl font-semibold">No products match these filters.</p>
+              <button
+                type="button"
+                className="btn-ghost mt-4"
+                onClick={() => {
+                  setQuery('');
+                  setCategory('All');
+                  setInStockOnly(false);
+                }}
+              >
+                Clear filters
+              </button>
+            </div>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              {visible.map((p) => (
+                <article key={p.id} className="panel flex min-w-0 flex-col">
+                  <button type="button" className="block text-left" onClick={() => setOpenId(p.id)} aria-label={`View details for ${p.name}`}>
+                    <ProductArt seed={p.id} image={p.image} className="h-40" />
+                  </button>
+                  <div className="flex flex-1 flex-col p-4">
+                    <p className="font-mono text-xs uppercase tracking-wider text-ink-500">{p.category}</p>
+                    <h2 className="mt-1 text-xl font-semibold leading-tight">
+                      <button type="button" className="text-left hover:text-forge-dark" onClick={() => setOpenId(p.id)}>
+                        {p.name}
+                      </button>
+                    </h2>
+                    <p className="mt-1 font-mono text-xs text-steel-500">{p.sku}</p>
+                    <p className="mt-3 flex flex-wrap items-baseline gap-x-2">
+                      <span className="text-2xl font-bold tabular-nums">{inr(p.price)}</span>
+                      {p.mrp > p.price ? (
+                        <>
+                          <span className="text-sm tabular-nums text-steel-500 line-through">{inr(p.mrp)}</span>
+                          <span className="text-xs font-semibold text-ok">{discountPct(p.price, p.mrp)}% off</span>
+                        </>
+                      ) : null}
+                    </p>
+                    <p className="mt-1">
+                      <StockLabel p={p} />
+                    </p>
+                    <ul className="mt-3 space-y-0.5 font-mono text-xs text-ink-700">
+                      {p.specs.slice(0, 2).map((s) => (
+                        <li key={s.label} className="truncate">
+                          {s.label}: {s.value}
+                        </li>
+                      ))}
+                    </ul>
+                    <div className="mt-auto grid grid-cols-2 gap-2 pt-4">
+                      <button type="button" className="btn-ghost" disabled={!isAvailable(p)} onClick={() => addToCart(p.id)}>
+                        Add to cart
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-primary"
+                        disabled={!isAvailable(p)}
+                        onClick={() => {
+                          addToCart(p.id);
+                          go('checkout');
+                        }}
+                      >
+                        Shop now
+                      </button>
+                    </div>
+                    <button type="button" className="mt-2 text-left text-sm font-semibold text-forge-dark hover:underline" onClick={() => setOpenId(p.id)}>
+                      Specifications and details
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
+
+      {open ? <ProductDetail product={open} onClose={() => setOpenId(null)} /> : null}
+    </>
+  );
+}
+
+// ---- src/pages/Manufacturing.tsx ----
+
+const PROCESS = [
+  { title: 'Drawing review', text: 'Our engineers check tolerances, materials and quantity, and flag anything that drives cost.' },
+  { title: 'Material procurement', text: 'Certified stock is ordered or drawn from inventory against the bill of materials.' },
+  { title: 'Fabrication and machining', text: 'Cutting, welding, turning and milling on the shop floor with in-process checks.' },
+  { title: 'Assembly and finishing', text: 'Sub-assemblies are fitted, tested and finished to the specified coating.' },
+  { title: 'Final inspection', text: 'Dimensional report and test certificates are prepared before packing.' },
+  { title: 'Dispatch', text: 'Packed and shipped with a GST invoice and delivery tracking.' },
+];
+
+function Manufacturing() {
+  const { company, setPrefill } = useApp();
+  const m = company.manufacturing;
+
+  return (
+    <>
+      <PageHeader eyebrow="Vel Manufacturing Company" title="Built to your drawing" lead={m.intro}>
+        <button
+          type="button"
+          className="btn-primary mt-6"
+          onClick={() => {
+            setPrefill('Custom manufacturing quote');
+            go('service-enquiry');
+          }}
+        >
+          Request a manufacturing quote
+        </button>
+      </PageHeader>
+
+      <section className="border-b border-steel-200 bg-white">
+        <dl className="wrap grid grid-cols-2 gap-y-6 py-8 md:grid-cols-4">
+          {m.stats.map((s) => (
+            <div key={s.label} className="min-w-0 border-l-2 border-forge pl-4">
+              <dd className="font-display text-4xl font-semibold tabular-nums">{s.value}</dd>
+              <dt className="text-sm text-ink-500">{s.label}</dt>
+            </div>
+          ))}
+        </dl>
+      </section>
+
+      <section className="wrap mt-14 grid gap-10 lg:grid-cols-2">
+        <div className="min-w-0">
+          <p className="eyebrow">Capabilities</p>
+          <h2 className="mt-1 text-4xl font-semibold">What the shop floor does</h2>
+          <ul className="mt-5 grid gap-px border border-steel-200 bg-steel-200 sm:grid-cols-2">
+            {m.capabilities.map((c) => (
+              <li key={c} className="flex items-start gap-3 bg-white p-4">
+                <Icon name="check" className="mt-0.5 h-5 w-5 shrink-0 text-forge" />
+                <span className="font-medium">{c}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div className="min-w-0">
+          <p className="eyebrow">Quality</p>
+          <h2 className="mt-1 text-4xl font-semibold">Documented and inspected</h2>
+          <ul className="mt-5 space-y-3">
+            {m.certifications.map((c) => (
+              <li key={c} className="panel flex items-center gap-3 p-4">
+                <Icon name="shield" className="h-6 w-6 shrink-0 text-ink-500" />
+                <span className="font-medium">{c}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </section>
+
+      <section className="wrap mt-14">
+        <p className="eyebrow">Production flow</p>
+        <h2 className="mt-1 text-4xl font-semibold">From drawing to dispatch</h2>
+        <ol className="mt-6 grid gap-px border border-steel-200 bg-steel-200 md:grid-cols-2 lg:grid-cols-3">
+          {PROCESS.map((p, i) => (
+            <li key={p.title} className="bg-white p-5">
+              <span className="font-mono text-xs text-forge-dark">STAGE {i + 1} OF {PROCESS.length}</span>
+              <h3 className="mt-1 text-xl font-semibold">{p.title}</h3>
+              <p className="mt-1 text-sm text-ink-700">{p.text}</p>
+            </li>
+          ))}
+        </ol>
+      </section>
+
+      <section className="wrap mt-14">
+        <div className="grid gap-6 bg-ink p-8 text-white md:grid-cols-[1fr_auto] md:items-center">
+          <div>
+            <h2 className="text-3xl font-semibold md:text-4xl">Send a drawing or a worn sample</h2>
+            <p className="mt-1 text-steel-200">
+              Our engineering desk replies with a quote and lead time. Call <span className="font-mono">{company.phone}</span> to
+              talk it through.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={() => {
+              setPrefill('Custom manufacturing quote');
+              go('service-enquiry');
+            }}
+          >
+            Start a quote request
+          </button>
+        </div>
+      </section>
+    </>
+  );
+}
+
+// ---- src/pages/ServiceEnquiry.tsx ----
+
+const GENERAL = 'General enquiry';
+const QUOTE = 'Custom manufacturing quote';
+
+interface Form {
+  name: string;
+  phone: string;
+  email: string;
+  topic: string;
+  equipment: string;
+  preferredDate: string;
+  message: string;
+}
+
+function ServiceEnquiry() {
+  const { services, company, session, prefill, setPrefill, submitEnquiry } = useApp();
+  const topics = [...services.map((s) => s.name), QUOTE, GENERAL];
+
+  const [form, setForm] = useState<Form>({
+    name: session?.name ?? '',
+    phone: '',
+    email: session?.email ?? '',
+    topic: prefill || topics[0],
+    equipment: '',
+    preferredDate: '',
+    message: '',
+  });
+  const [errors, setErrors] = useState<Partial<Record<keyof Form, string>>>({});
+  const [done, setDone] = useState<Enquiry | null>(null);
+
+  useEffect(() => {
+    if (prefill) {
+      setForm((f) => ({ ...f, topic: prefill }));
+      setPrefill('');
+    }
+  }, [prefill, setPrefill]);
+
+  const set = (k: keyof Form, v: string) => setForm((f) => ({ ...f, [k]: v }));
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    const next: Partial<Record<keyof Form, string>> = {};
+    if (form.name.trim().length < 2) next.name = 'Enter your name.';
+    if (!isValidPhone(form.phone)) next.phone = 'Enter a phone number with at least 10 digits.';
+    if (!isValidEmail(form.email)) next.email = 'Enter a valid email address.';
+    if (form.message.trim().length < 10) next.message = 'Describe the problem or requirement in a few words.';
+    setErrors(next);
+    if (Object.keys(next).length > 0) return;
+    setDone(submitEnquiry({ ...form, name: form.name.trim(), message: form.message.trim() }));
+  };
+
+  if (done) {
+    return (
+      <>
+        <PageHeader eyebrow="Service Enquiry" title="Enquiry received" />
+        <div className="wrap mt-10 max-w-2xl">
+          <div className="panel p-8">
+            <Icon name="check" className="h-10 w-10 text-ok" />
+            <h2 className="mt-3 text-3xl font-semibold">Thank you, {done.name}.</h2>
+            <p className="mt-2 text-ink-700">
+              Our team will call you on <span className="font-mono">{done.phone}</span> during working hours ({company.hours}).
+            </p>
+            <p className="mt-4 font-mono text-sm">
+              Reference <strong>{done.id}</strong>
+            </p>
+            <button
+              type="button"
+              className="btn-dark mt-6"
+              onClick={() => {
+                setDone(null);
+                setForm((f) => ({ ...f, equipment: '', preferredDate: '', message: '' }));
+              }}
+            >
+              Send another enquiry
+            </button>
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <PageHeader
+        eyebrow="Service Enquiry"
+        title="Tell us what needs fixing, or building"
+        lead="Fill in the form and a service engineer will call you the same working day."
+      />
+
+      <div className="wrap mt-10 grid gap-8 lg:grid-cols-[1fr_320px]">
+        <form className="panel min-w-0 space-y-5 p-6" onSubmit={submit} noValidate>
+          <div className="grid gap-5 sm:grid-cols-2">
+            <Field label="Your name" htmlFor="enq-name" error={errors.name}>
+              <input id="enq-name" className="field" autoComplete="name" value={form.name} onChange={(e) => set('name', e.target.value)} />
+            </Field>
+            <Field label="Phone" htmlFor="enq-phone" error={errors.phone}>
+              <input id="enq-phone" className="field" inputMode="tel" autoComplete="tel" placeholder="+91" value={form.phone} onChange={(e) => set('phone', e.target.value)} />
+            </Field>
+          </div>
+
+          <Field label="Email" htmlFor="enq-email" error={errors.email}>
+            <input id="enq-email" type="email" className="field" autoComplete="email" value={form.email} onChange={(e) => set('email', e.target.value)} />
+          </Field>
+
+          <div className="grid gap-5 sm:grid-cols-2">
+            <Field label="Enquiry type" htmlFor="enq-topic">
+              <select id="enq-topic" className="field" value={form.topic} onChange={(e) => set('topic', e.target.value)}>
+                {topics.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Preferred date (optional)" htmlFor="enq-date">
+              <input id="enq-date" type="date" className="field" value={form.preferredDate} onChange={(e) => set('preferredDate', e.target.value)} />
+            </Field>
+          </div>
+
+          <Field label="Equipment or part (optional)" htmlFor="enq-equipment" hint="Make, model, rating or part number helps us quote faster.">
+            <input id="enq-equipment" className="field" placeholder="e.g. 15 kW pump motor, Crompton" value={form.equipment} onChange={(e) => set('equipment', e.target.value)} />
+          </Field>
+
+          <Field label="Describe the problem or requirement" htmlFor="enq-message" error={errors.message}>
+            <textarea id="enq-message" rows={5} className="field" value={form.message} onChange={(e) => set('message', e.target.value)} />
+          </Field>
+
+          <button type="submit" className="btn-primary">
+            Submit enquiry
+          </button>
+        </form>
+
+        <aside className="min-w-0 space-y-4">
+          <div className="bg-ink p-6 text-white">
+            <h2 className="text-2xl font-semibold uppercase tracking-wide">Prefer to call?</h2>
+            <p className="mt-3 font-mono text-lg">{company.phone}</p>
+            {company.altPhone ? <p className="font-mono text-lg">{company.altPhone}</p> : null}
+            <p className="mt-2 text-sm text-steel-200">{company.hours}</p>
+          </div>
+          <div className="panel p-5 text-sm text-ink-700">
+            <p className="font-semibold text-ink">What happens next</p>
+            <ol className="mt-2 list-decimal space-y-1 pl-5">
+              <li>We log your enquiry and give it a reference number.</li>
+              <li>An engineer calls to confirm the details.</li>
+              <li>You receive a written quote or a visit date.</li>
+            </ol>
+          </div>
+        </aside>
+      </div>
+    </>
+  );
+}
+
+// ---- src/pages/Cart.tsx ----
+
+function OrderSummary({ t, couponCode }: { t: Totals; couponCode?: string }) {
+  const { settings } = useApp();
+  return (
+    <dl className="space-y-2 text-sm">
+      <div className="flex justify-between">
+        <dt>Subtotal</dt>
+        <dd className="font-mono tabular-nums">{inr(t.subtotal)}</dd>
+      </div>
+      {t.discount > 0 ? (
+        <div className="flex justify-between text-ok">
+          <dt>Coupon{couponCode ? ` (${couponCode})` : ''}</dt>
+          <dd className="font-mono tabular-nums">−{inr(t.discount)}</dd>
+        </div>
+      ) : null}
+      <div className="flex justify-between">
+        <dt>GST ({settings.gstRate}%)</dt>
+        <dd className="font-mono tabular-nums">{inr(t.gst)}</dd>
+      </div>
+      <div className="flex justify-between">
+        <dt>Shipping</dt>
+        <dd className="font-mono tabular-nums">
+          {t.shippingPending ? 'Chosen at checkout' : t.shipping === 0 ? 'Free' : inr(t.shipping)}
+        </dd>
+      </div>
+      <div className="flex justify-between border-t border-steel-200 pt-3 text-lg font-bold">
+        <dt>{t.shippingPending ? 'Total before shipping' : 'Total'}</dt>
+        <dd className="font-mono tabular-nums">{inr(t.total)}</dd>
+      </div>
+    </dl>
+  );
+}
+
+function Cart() {
+  const { cartDetail, totals, setQty, removeFromCart, role, settings } = useApp();
+
+  return (
+    <>
+      <PageHeader eyebrow="Vel Store" title="Your cart" />
+      <div className="wrap mt-8">
+        {cartDetail.length === 0 ? (
+          <div className="panel p-10 text-center">
+            <Icon name="cart" className="mx-auto h-10 w-10 text-steel-500" />
+            <h2 className="mt-3 text-3xl font-semibold">Your cart is empty</h2>
+            <p className="mt-1 text-ink-500">Add products from the store to see them here.</p>
+            <a href="#store" className="btn-primary mt-5">
+              Browse the store
+            </a>
+          </div>
+        ) : (
+          <div className="grid gap-8 lg:grid-cols-[1fr_340px]">
+            <ul className="panel min-w-0 divide-y divide-steel-200">
+              {cartDetail.map(({ line, product }) => (
+                <li key={product.id} className="grid grid-cols-[88px_1fr] gap-4 p-4 sm:grid-cols-[104px_1fr_auto]">
+                  <ProductArt seed={product.id} image={product.image} className="h-20 sm:h-24" />
+                  <div className="min-w-0">
+                    <p className="font-mono text-xs text-steel-500">{product.sku}</p>
+                    <h2 className="text-xl font-semibold leading-tight">{product.name}</h2>
+                    <p className="mt-1 text-sm tabular-nums text-ink-700">{inr(product.price)} per {product.unit}</p>
+                    <div className="mt-3 flex flex-wrap items-center gap-3">
+                      <Stepper value={line.qty} max={product.stock} onChange={(n) => setQty(product.id, n)} label={`Quantity for ${product.name}`} />
+                      <button type="button" className="inline-flex items-center gap-1 text-sm font-semibold text-bad hover:underline" onClick={() => removeFromCart(product.id)}>
+                        <Icon name="trash" className="h-4 w-4" /> Remove
+                      </button>
+                    </div>
+                    {!isAvailable(product) ? (
+                      <p className="mt-2 text-xs font-semibold text-bad">Out of stock. Remove it to continue to checkout.</p>
+                    ) : line.qty >= product.stock ? (
+                      <p className="mt-2 text-xs text-forge-dark">Maximum available quantity selected.</p>
+                    ) : null}
+                  </div>
+                  <p className="col-span-2 text-right text-lg font-bold tabular-nums sm:col-span-1">{inr(product.price * line.qty)}</p>
+                </li>
+              ))}
+            </ul>
+
+            <aside className="min-w-0 lg:sticky lg:top-32 lg:self-start">
+              <div className="panel p-5">
+                <h2 className="mb-3 text-2xl font-semibold">Order summary</h2>
+                <OrderSummary t={totals} />
+                {settings.freeShippingAbove > 0 && totals.subtotal < settings.freeShippingAbove ? (
+                  <p className="mt-3 text-xs text-ink-500">
+                    Add {inr(settings.freeShippingAbove - totals.subtotal)} more for free shipping. Coupons and delivery options are applied at checkout.
+                  </p>
+                ) : (
+                  <p className="mt-3 text-xs text-ink-500">Coupons and delivery options are applied at checkout.</p>
+                )}
+                <button type="button" className="btn-primary mt-4 w-full" onClick={() => go('checkout')}>
+                  {role === 'guest' ? 'Sign in to checkout' : 'Proceed to checkout'}
+                </button>
+                <a href="#store" className="btn-ghost mt-2 w-full">
+                  Continue shopping
+                </a>
+              </div>
+            </aside>
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
+// ---- src/pages/Checkout.tsx ----
+
+const EMPTY: ShippingInfo = { name: '', phone: '', line1: '', city: '', state: '', pincode: '' };
+
+const FIELD_IDS: Record<keyof ShippingInfo, string> = {
+  name: 'co-name',
+  phone: 'co-phone',
+  line1: 'co-line1',
+  city: 'co-city',
+  state: 'co-state',
+  pincode: 'co-pin',
+};
+
+function Checkout() {
+  const { cartDetail, session, placeOrder, settings, quote } = useApp();
+  const [ship, setShip] = useState<ShippingInfo>({ ...EMPTY, name: session?.name ?? '' });
+  const couriers = settings.couriers.filter((c) => c.enabled);
+  const payments = settings.payments.filter((p) => p.enabled);
+  const [courierId, setCourierId] = useState<string>(couriers[0]?.id ?? '');
+  const [paymentId, setPaymentId] = useState<string>(payments[0]?.id ?? '');
+  const [couponInput, setCouponInput] = useState('');
+  const [appliedCode, setAppliedCode] = useState('');
+  const [couponMsg, setCouponMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [errors, setErrors] = useState<Partial<Record<keyof ShippingInfo, string>>>({});
+  const [formError, setFormError] = useState('');
+  const [order, setOrder] = useState<Order | null>(null);
+
+  const set = (k: keyof ShippingInfo, v: string) => setShip((s) => ({ ...s, [k]: v }));
+
+  // Re-validated on every render so a coupon that stops qualifying (e.g. cart changed) is dropped.
+  const q = quote(appliedCode, courierId);
+  const activeCode = q.coupon ? q.coupon.code : '';
+
+  const applyCoupon = () => {
+    const probe = quote(couponInput, courierId);
+    if (!couponInput.trim()) {
+      setCouponMsg({ ok: false, text: 'Enter a coupon code.' });
+      return;
+    }
+    if (probe.couponError || !probe.coupon) {
+      setAppliedCode('');
+      setCouponMsg({ ok: false, text: probe.couponError || 'This coupon code is not valid.' });
+      return;
+    }
+    setAppliedCode(probe.coupon.code);
+    setCouponInput('');
+    setCouponMsg({ ok: true, text: `${probe.coupon.code} applied. You save ${inr(probe.totals.discount)}.` });
+  };
+
+  const removeCoupon = () => {
+    setAppliedCode('');
+    setCouponMsg(null);
+  };
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    const next: Partial<Record<keyof ShippingInfo, string>> = {};
+    if (ship.name.trim().length < 2) next.name = 'Enter the recipient name.';
+    if (!isValidPhone(ship.phone)) next.phone = 'Enter a phone number with at least 10 digits.';
+    if (ship.line1.trim().length < 5) next.line1 = 'Enter the delivery address.';
+    if (ship.city.trim().length < 2) next.city = 'Enter the city.';
+    if (ship.state.trim().length < 2) next.state = 'Enter the state.';
+    if (!/^\d{6}$/.test(ship.pincode.trim())) next.pincode = 'Enter a 6-digit PIN code.';
+    setErrors(next);
+    const missing = Object.keys(next) as (keyof ShippingInfo)[];
+    if (missing.length > 0) {
+      setFormError('Please complete the highlighted delivery details above, then place your order again.');
+      // bring the first invalid field into view so the click never looks like it did nothing
+      const first = document.getElementById(FIELD_IDS[missing[0]]);
+      first?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      first?.focus({ preventScroll: true });
+      return;
+    }
+
+    const result = placeOrder(
+      {
+        name: ship.name.trim(),
+        phone: ship.phone.trim(),
+        line1: ship.line1.trim(),
+        city: ship.city.trim(),
+        state: ship.state.trim(),
+        pincode: ship.pincode.trim(),
+      },
+      paymentId,
+      courierId,
+      activeCode,
+    );
+    if (result.ok) {
+      setFormError('');
+      setOrder(result.order);
+      window.scrollTo({ top: 0 });
+    } else {
+      setFormError(result.error);
+    }
+  };
+
+  if (order) {
+    return (
+      <>
+        <PageHeader eyebrow="Checkout" title="Order placed" />
+        <div className="wrap mt-10 max-w-3xl">
+          <div className="panel p-6 sm:p-8">
+            <Icon name="check" className="h-10 w-10 text-ok" />
+            <h2 className="mt-3 text-3xl font-semibold">Thank you, {order.customerName}.</h2>
+            <p className="mt-1 text-ink-700">
+              Order <strong className="font-mono">{order.id}</strong> was placed on {fmtDate(order.createdAt)}. Payment: {order.payment}.
+              {order.courier ? ` Delivery: ${order.courier}.` : ''}
+            </p>
+
+            <div className="mt-5 overflow-x-auto border border-steel-200">
+              <table className="w-full text-sm">
+                <thead className="bg-steel-100 text-left">
+                  <tr>
+                    <th className="px-3 py-2">Item</th>
+                    <th className="px-3 py-2 text-right">Qty</th>
+                    <th className="px-3 py-2 text-right">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {order.items.map((i) => (
+                    <tr key={i.productId} className="border-t border-steel-200">
+                      <td className="px-3 py-2">
+                        {i.name}
+                        <span className="block font-mono text-xs text-steel-500">{i.sku}</span>
+                      </td>
+                      <td className="px-3 py-2 text-right font-mono tabular-nums">{i.qty}</td>
+                      <td className="px-3 py-2 text-right font-mono tabular-nums">{inr(i.price * i.qty)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot className="border-t border-steel-200">
+                  {order.discount ? (
+                    <tr className="text-ok">
+                      <td className="px-3 py-2" colSpan={2}>
+                        Coupon {order.coupon}
+                      </td>
+                      <td className="px-3 py-2 text-right font-mono tabular-nums">−{inr(order.discount)}</td>
+                    </tr>
+                  ) : null}
+                  <tr className="font-semibold">
+                    <td className="px-3 py-2" colSpan={2}>
+                      Total incl. GST and shipping
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono tabular-nums">{inr(order.total)}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+
+            <p className="mt-4 text-sm text-ink-700">
+              Delivering to {order.ship.name}, {order.ship.line1}, {order.ship.city}, {order.ship.state} {order.ship.pincode}.
+            </p>
+            <a href="#store" className="btn-dark mt-6">
+              Continue shopping
+            </a>
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  if (cartDetail.length === 0) {
+    return (
+      <>
+        <PageHeader eyebrow="Checkout" title="Nothing to check out" />
+        <div className="wrap mt-10">
+          <div className="panel p-8 text-center">
+            <p className="text-xl font-semibold">Your cart is empty.</p>
+            <a href="#store" className="btn-primary mt-4">
+              Browse the store
+            </a>
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <PageHeader eyebrow="Checkout" title="Delivery and payment" />
+      <form className="wrap mt-8 grid gap-8 lg:grid-cols-[1fr_360px]" onSubmit={submit} noValidate>
+        <div className="min-w-0 space-y-6">
+          <section className="panel space-y-5 p-6" aria-labelledby="ship-h">
+            <h2 id="ship-h" className="text-2xl font-semibold">
+              Delivery address
+            </h2>
+            <div className="grid gap-5 sm:grid-cols-2">
+              <Field label="Recipient name" htmlFor="co-name" error={errors.name}>
+                <input id="co-name" className="field" autoComplete="name" value={ship.name} onChange={(e) => set('name', e.target.value)} />
+              </Field>
+              <Field label="Phone" htmlFor="co-phone" error={errors.phone}>
+                <input id="co-phone" className="field" inputMode="tel" autoComplete="tel" value={ship.phone} onChange={(e) => set('phone', e.target.value)} />
+              </Field>
+            </div>
+            <Field label="Address" htmlFor="co-line1" error={errors.line1}>
+              <input id="co-line1" className="field" autoComplete="street-address" placeholder="Plant, street, area" value={ship.line1} onChange={(e) => set('line1', e.target.value)} />
+            </Field>
+            <div className="grid gap-5 sm:grid-cols-3">
+              <Field label="City" htmlFor="co-city" error={errors.city}>
+                <input id="co-city" className="field" autoComplete="address-level2" value={ship.city} onChange={(e) => set('city', e.target.value)} />
+              </Field>
+              <Field label="State" htmlFor="co-state" error={errors.state}>
+                <input id="co-state" className="field" autoComplete="address-level1" value={ship.state} onChange={(e) => set('state', e.target.value)} />
+              </Field>
+              <Field label="PIN code" htmlFor="co-pin" error={errors.pincode}>
+                <input id="co-pin" className="field" inputMode="numeric" maxLength={6} autoComplete="postal-code" value={ship.pincode} onChange={(e) => set('pincode', e.target.value)} />
+              </Field>
+            </div>
+          </section>
+
+          {couriers.length > 0 ? (
+            <fieldset className="panel p-6">
+              <legend className="px-1 text-2xl font-semibold">Delivery option</legend>
+              <div className="mt-2 space-y-2">
+                {couriers.map((c) => {
+                  const free = q.totals.shipping === 0 && !q.totals.shippingPending && settings.freeShippingAbove > 0 && q.totals.subtotal - q.totals.discount >= settings.freeShippingAbove;
+                  return (
+                    <label key={c.id} htmlFor={`co-courier-${c.id}`} className={`flex cursor-pointer items-start gap-3 border p-3 text-sm ${courierId === c.id || (!courierId && c === couriers[0]) ? 'border-ink bg-steel-50' : 'border-steel-200'}`}>
+                      <input
+                        id={`co-courier-${c.id}`}
+                        type="radio"
+                        name="courier"
+                        className="mt-0.5 accent-[#B45309]"
+                        checked={(courierId || couriers[0].id) === c.id}
+                        onChange={() => setCourierId(c.id)}
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="block font-semibold">{c.name}</span>
+                        <span className="block font-mono text-xs text-ink-500">{c.eta}</span>
+                      </span>
+                      <span className="shrink-0 font-mono tabular-nums">{free ? 'Free' : inr(c.charge)}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </fieldset>
+          ) : null}
+
+          <fieldset className="panel p-6">
+            <legend className="px-1 text-2xl font-semibold">Payment method</legend>
+            {payments.length === 0 ? (
+              <p className="mt-2 text-sm font-medium text-bad">No payment method is available right now. Please call us to place this order.</p>
+            ) : (
+              <div className="mt-2 space-y-2">
+                {payments.map((m) => (
+                  <label key={m.id} htmlFor={`co-pay-${m.id}`} className={`flex cursor-pointer items-start gap-3 border p-3 text-sm ${paymentId === m.id ? 'border-ink bg-steel-50' : 'border-steel-200'}`}>
+                    <input id={`co-pay-${m.id}`} type="radio" name="payment" className="mt-0.5 accent-[#B45309]" checked={paymentId === m.id} onChange={() => setPaymentId(m.id)} />
+                    <span className="min-w-0">
+                      <span className="block font-semibold">{m.label}</span>
+                      {m.instructions ? <span className="block text-xs text-ink-500">{m.instructions}</span> : null}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            )}
+            <p className="mt-3 text-xs text-ink-500">No card details are collected on this site.</p>
+          </fieldset>
+        </div>
+
+        <aside className="min-w-0 lg:sticky lg:top-32 lg:self-start">
+          <div className="panel p-5">
+            <h2 className="mb-3 text-2xl font-semibold">Order summary</h2>
+            <ul className="mb-4 space-y-2 border-b border-steel-200 pb-4 text-sm">
+              {cartDetail.map(({ line, product }) => (
+                <li key={product.id} className="flex justify-between gap-3">
+                  <span className="min-w-0">
+                    {product.name} <span className="font-mono text-steel-500">× {line.qty}</span>
+                  </span>
+                  <span className="shrink-0 font-mono tabular-nums">{inr(product.price * line.qty)}</span>
+                </li>
+              ))}
+            </ul>
+
+            <div className="mb-4 border-b border-steel-200 pb-4">
+              <label htmlFor="co-coupon" className="label">
+                Coupon code
+              </label>
+              {activeCode ? (
+                <div className="flex items-center justify-between gap-2 bg-green-50 px-3 py-2 text-sm text-ok">
+                  <span className="font-mono font-semibold">{activeCode}</span>
+                  <button type="button" className="font-semibold underline" onClick={removeCoupon}>
+                    Remove
+                  </button>
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  <input
+                    id="co-coupon"
+                    className="field font-mono uppercase"
+                    placeholder="Enter code"
+                    autoComplete="off"
+                    value={couponInput}
+                    onChange={(e) => setCouponInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        applyCoupon();
+                      }
+                    }}
+                  />
+                  <button type="button" className="btn-ghost shrink-0" onClick={applyCoupon}>
+                    Apply
+                  </button>
+                </div>
+              )}
+              {couponMsg ? (
+                <p className={`mt-1 text-xs font-medium ${couponMsg.ok ? 'text-ok' : 'text-bad'}`} role={couponMsg.ok ? 'status' : 'alert'}>
+                  {couponMsg.text}
+                </p>
+              ) : null}
+              {!activeCode && appliedCode && q.couponError ? (
+                <p className="mt-1 text-xs font-medium text-bad" role="alert">
+                  {q.couponError}
+                </p>
+              ) : null}
+            </div>
+
+            <OrderSummary t={q.totals} couponCode={activeCode} />
+            {formError ? (
+              <p className="mt-3 text-sm font-medium text-bad" role="alert">
+                {formError}
+              </p>
+            ) : null}
+            <button type="submit" className="btn-primary mt-4 w-full" disabled={payments.length === 0}>
+              Place order
+            </button>
+            <a href="#cart" className="btn-ghost mt-2 w-full">
+              Back to cart
+            </a>
+          </div>
+        </aside>
+      </form>
+    </>
+  );
+}
+
+// ---- src/pages/Login.tsx ----
+
+/**
+ * Email + password sign-in. Passwords are hashed (PBKDF2) before storage, accounts lock
+ * after repeated failures and sessions expire. See src/auth.ts and src/store.tsx.
+ * For production, replace register()/login() with a server-side auth provider.
+ */
+const STRENGTH_LABEL = ['', 'Weak', 'Fair', 'Good', 'Strong'];
+const STRENGTH_COLOR = ['bg-steel-200', 'bg-bad', 'bg-forge', 'bg-forge', 'bg-ok'];
+
+function Login({ reason, inPlace }: { reason?: string; inPlace: boolean }) {
+  const { register, login } = useApp();
+  const [mode, setMode] = useState<'login' | 'register'>('login');
+  const [email, setEmail] = useState('');
+  const [name, setName] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [show, setShow] = useState(false);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const isRegister = mode === 'register';
+  const strength = passwordStrength(password);
+
+  const switchMode = (m: 'login' | 'register') => {
+    setMode(m);
+    setError('');
+    setPassword('');
+    setConfirm('');
+  };
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (busy) return;
+    if (isRegister && password !== confirm) {
+      setError('The two passwords do not match.');
+      return;
+    }
+    setBusy(true);
+    setError('');
+    const err = isRegister ? await register(email, name, password) : await login(email, password);
+    setBusy(false);
+    if (err) {
+      setError(err);
+      setPassword('');
+      setConfirm('');
+      return;
+    }
+    if (!inPlace) {
+      // role state updates after this handler, so compare against the config directly
+      const isAdmin = ADMIN_EMAILS.map((a) => a.toLowerCase()).includes(email.trim().toLowerCase());
+      go(isAdmin ? 'admin' : 'home');
+    }
+  };
+
+  return (
+    <div className="wrap flex justify-center py-14">
+      <form className="panel w-full max-w-md space-y-5 p-6 sm:p-8" onSubmit={submit} noValidate>
+        <div>
+          <Icon name="user" className="h-8 w-8 text-ink-500" />
+          <h1 className="mt-2 text-4xl font-semibold">{isRegister ? 'Create account' : 'Sign in'}</h1>
+          <p className="mt-1 text-sm text-ink-700">
+            {reason ?? (isRegister ? 'Register with your email and a password to check out and track your orders.' : 'Sign in with your email and password.')}
+          </p>
+        </div>
+
+        <div role="tablist" aria-label="Account" className="grid grid-cols-2 border border-steel-300">
+          <button type="button" role="tab" aria-selected={!isRegister} onClick={() => switchMode('login')} className={`px-3 py-2 text-sm font-semibold ${!isRegister ? 'bg-ink text-white' : 'bg-white hover:bg-steel-100'}`}>
+            Sign in
+          </button>
+          <button type="button" role="tab" aria-selected={isRegister} onClick={() => switchMode('register')} className={`px-3 py-2 text-sm font-semibold ${isRegister ? 'bg-ink text-white' : 'bg-white hover:bg-steel-100'}`}>
+            Create account
+          </button>
+        </div>
+
+        {isRegister ? (
+          <Field label="Your name" htmlFor="login-name">
+            <input id="login-name" className="field" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} />
+          </Field>
+        ) : null}
+
+        <Field label="Email address" htmlFor="login-email">
+          <input
+            id="login-email"
+            type="email"
+            className="field"
+            autoComplete="email"
+            placeholder="name@example.com"
+            value={email}
+            onChange={(e) => {
+              setEmail(e.target.value);
+              setError('');
+            }}
+          />
+        </Field>
+
+        <Field label="Password" htmlFor="login-password" hint={isRegister ? 'At least 8 characters with upper and lower case letters and a number.' : undefined}>
+          <div className="relative">
+            <input
+              id="login-password"
+              type={show ? 'text' : 'password'}
+              className="field !pr-16"
+              autoComplete={isRegister ? 'new-password' : 'current-password'}
+              value={password}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                setError('');
+              }}
+            />
+            <button type="button" className="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-1 text-xs font-semibold text-ink-500 hover:text-ink" onClick={() => setShow((v) => !v)} aria-pressed={show}>
+              {show ? 'Hide' : 'Show'}
+            </button>
+          </div>
+        </Field>
+
+        {isRegister ? (
+          <>
+            <div aria-live="polite">
+              <div className="flex gap-1" aria-hidden="true">
+                {[1, 2, 3, 4].map((i) => (
+                  <span key={i} className={`h-1.5 flex-1 ${strength >= i ? STRENGTH_COLOR[strength] : 'bg-steel-200'}`} />
+                ))}
+              </div>
+              <p className="mt-1 text-xs text-ink-500">{password ? `Password strength: ${STRENGTH_LABEL[strength]}` : ' '}</p>
+            </div>
+            <Field label="Confirm password" htmlFor="login-confirm">
+              <input id="login-confirm" type={show ? 'text' : 'password'} className="field" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
+            </Field>
+          </>
+        ) : null}
+
+        {error ? (
+          <p className="text-sm font-medium text-bad" role="alert">
+            {error}
+          </p>
+        ) : null}
+
+        <button type="submit" className="btn-dark w-full" disabled={busy}>
+          {busy ? 'Checking…' : isRegister ? 'Create account' : 'Sign in'}
+        </button>
+        <p className="text-xs text-ink-500">
+          Passwords are stored only as salted hashes. After 5 wrong attempts sign-in locks for 5 minutes, and you are signed out automatically after 8 hours.
+        </p>
+      </form>
+    </div>
+  );
+}
+
+// ---- src/pages/AdminSettings.tsx ----
+
+/* ---------------- Branding (logo) ---------------- */
+
+function AdminBranding() {
+  const { settings, saveSettings, company } = useApp();
+  const [logo, setLogo] = useState(settings.logo);
+  const dirty = logo !== settings.logo;
+
+  return (
+    <section className="panel max-w-2xl space-y-5 p-5">
+      <div>
+        <h2 className="text-2xl font-semibold">Logo</h2>
+        <p className="mt-1 text-sm text-ink-700">
+          Shown in the site header and footer next to the name &ldquo;{company.name}&rdquo;. Change the name in Company details.
+        </p>
+      </div>
+      <ImagePicker
+        id="brand-logo"
+        label="Logo image"
+        value={logo}
+        onChange={setLogo}
+        maxDim={360}
+        mime="image/png"
+        previewClass="h-24 w-40"
+        hint="PNG, JPG, WebP or SVG. A wide logo on a transparent or white background works best."
+      />
+      <div className="flex flex-wrap items-center gap-3">
+        <button type="button" className="btn-primary" disabled={!dirty} onClick={() => saveSettings({ ...settings, logo })}>
+          Save logo
+        </button>
+        {logo ? (
+          <button type="button" className="btn-ghost" onClick={() => setLogo('')}>
+            Use the default Vel mark
+          </button>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+/* ---------------- Shipping, couriers and GST ---------------- */
+
+interface CourierDraft {
+  id: string;
+  name: string;
+  charge: string;
+  eta: string;
+  enabled: boolean;
+}
+
+function AdminShipping() {
+  const { settings, saveSettings } = useApp();
+  const [gst, setGst] = useState(String(settings.gstRate));
+  const [freeAbove, setFreeAbove] = useState(String(settings.freeShippingAbove));
+  const [rows, setRows] = useState<CourierDraft[]>(
+    settings.couriers.map((c) => ({ id: c.id, name: c.name, charge: String(c.charge), eta: c.eta, enabled: c.enabled })),
+  );
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const patch = (id: string, p: Partial<CourierDraft>) => setRows((r) => r.map((x) => (x.id === id ? { ...x, ...p } : x)));
+
+  const save = (e: FormEvent) => {
+    e.preventDefault();
+    const err: Record<string, string> = {};
+    const gstN = Number(gst);
+    const freeN = Number(freeAbove);
+    if (!Number.isFinite(gstN) || gstN < 0 || gstN > 100) err.gst = 'Enter a GST rate between 0 and 100.';
+    if (!Number.isFinite(freeN) || freeN < 0) err.free = 'Enter an amount, or 0 to turn free shipping off.';
+    rows.forEach((r) => {
+      if (r.name.trim().length < 2) err[`name-${r.id}`] = 'Enter a courier name.';
+      const c = Number(r.charge);
+      if (r.charge.trim() === '' || !Number.isFinite(c) || c < 0) err[`charge-${r.id}`] = 'Enter a charge, 0 or more.';
+    });
+    setErrors(err);
+    if (Object.keys(err).length > 0) return;
+    saveSettings({
+      ...settings,
+      gstRate: gstN,
+      freeShippingAbove: freeN,
+      couriers: rows.map((r) => ({ id: r.id, name: r.name.trim(), charge: Number(r.charge), eta: r.eta.trim(), enabled: r.enabled })),
+    });
+  };
+
+  return (
+    <form className="space-y-6" onSubmit={save} noValidate>
+      <section className="panel space-y-4 p-5">
+        <h2 className="text-2xl font-semibold">Tax and free shipping</h2>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="GST rate (%)" htmlFor="sh-gst" error={errors.gst} hint="Added on top of product prices at checkout.">
+            <input id="sh-gst" className="field" inputMode="decimal" value={gst} onChange={(e) => setGst(e.target.value)} />
+          </Field>
+          <Field label="Free shipping above (₹)" htmlFor="sh-free" error={errors.free} hint="Applies to the subtotal after coupon, before GST. Use 0 to switch off.">
+            <input id="sh-free" className="field" inputMode="decimal" value={freeAbove} onChange={(e) => setFreeAbove(e.target.value)} />
+          </Field>
+        </div>
+      </section>
+
+      <section className="panel p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-2xl font-semibold">Couriers and delivery charges</h2>
+            <p className="text-sm text-ink-700">Customers choose one of the enabled options at checkout.</p>
+          </div>
+          <button
+            type="button"
+            className="btn-ghost"
+            onClick={() => setRows((r) => [...r, { id: uid('c'), name: '', charge: '0', eta: '', enabled: true }])}
+          >
+            <Icon name="plus" className="h-4 w-4" /> Add courier
+          </button>
+        </div>
+
+        <ul className="mt-4 space-y-3">
+          {rows.map((r) => (
+            <li key={r.id} className="grid gap-3 border border-steel-200 p-3 md:grid-cols-[1.4fr_8rem_1fr_auto]">
+              <Field label="Courier name" htmlFor={`cr-name-${r.id}`} error={errors[`name-${r.id}`]}>
+                <input id={`cr-name-${r.id}`} className="field" value={r.name} onChange={(e) => patch(r.id, { name: e.target.value })} />
+              </Field>
+              <Field label="Charge (₹)" htmlFor={`cr-charge-${r.id}`} error={errors[`charge-${r.id}`]}>
+                <input id={`cr-charge-${r.id}`} className="field" inputMode="decimal" value={r.charge} onChange={(e) => patch(r.id, { charge: e.target.value })} />
+              </Field>
+              <Field label="Delivery time" htmlFor={`cr-eta-${r.id}`}>
+                <input id={`cr-eta-${r.id}`} className="field" placeholder="e.g. 2 to 3 days" value={r.eta} onChange={(e) => patch(r.id, { eta: e.target.value })} />
+              </Field>
+              <div className="flex items-end gap-4 pb-2">
+                <label className="flex items-center gap-2 text-sm" htmlFor={`cr-on-${r.id}`}>
+                  <input id={`cr-on-${r.id}`} type="checkbox" className="h-4 w-4 accent-[#B45309]" checked={r.enabled} onChange={(e) => patch(r.id, { enabled: e.target.checked })} />
+                  Enabled
+                </label>
+                <button type="button" className="inline-flex items-center gap-1 text-sm font-semibold text-bad hover:underline" onClick={() => setRows((x) => x.filter((y) => y.id !== r.id))} aria-label={`Remove courier ${r.name || ''}`}>
+                  <Icon name="trash" className="h-4 w-4" /> Remove
+                </button>
+              </div>
+            </li>
+          ))}
+          {rows.length === 0 ? <li className="p-4 text-sm text-ink-500">No couriers. Orders will ship with no delivery charge.</li> : null}
+        </ul>
+      </section>
+
+      <div className="flex justify-end">
+        <button type="submit" className="btn-primary">
+          Save shipping and tax
+        </button>
+      </div>
+    </form>
+  );
+}
+
+/* ---------------- Payment methods ---------------- */
+
+interface PaymentDraft {
+  id: string;
+  label: string;
+  instructions: string;
+  enabled: boolean;
+}
+
+function AdminPayments() {
+  const { settings, saveSettings } = useApp();
+  const [rows, setRows] = useState<PaymentDraft[]>(settings.payments.map((p) => ({ ...p })));
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [topError, setTopError] = useState('');
+
+  const patch = (id: string, p: Partial<PaymentDraft>) => setRows((r) => r.map((x) => (x.id === id ? { ...x, ...p } : x)));
+
+  const save = (e: FormEvent) => {
+    e.preventDefault();
+    const err: Record<string, string> = {};
+    rows.forEach((r) => {
+      if (r.label.trim().length < 2) err[r.id] = 'Enter a name for this payment method.';
+    });
+    setErrors(err);
+    if (Object.keys(err).length > 0) {
+      setTopError('');
+      return;
+    }
+    if (!rows.some((r) => r.enabled)) {
+      setTopError('Keep at least one payment method enabled, or customers cannot place orders.');
+      return;
+    }
+    setTopError('');
+    saveSettings({
+      ...settings,
+      payments: rows.map((r) => ({ id: r.id, label: r.label.trim(), instructions: r.instructions.trim(), enabled: r.enabled })),
+    });
+  };
+
+  return (
+    <form className="panel space-y-4 p-5" onSubmit={save} noValidate>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-2xl font-semibold">Payment methods</h2>
+          <p className="text-sm text-ink-700">Enabled methods appear at checkout. No card data is collected by this site.</p>
+        </div>
+        <button type="button" className="btn-ghost" onClick={() => setRows((r) => [...r, { id: uid('pm'), label: '', instructions: '', enabled: true }])}>
+          <Icon name="plus" className="h-4 w-4" /> Add method
+        </button>
+      </div>
+
+      <ul className="space-y-3">
+        {rows.map((r) => (
+          <li key={r.id} className="grid gap-3 border border-steel-200 p-3 md:grid-cols-[1fr_1.6fr_auto]">
+            <Field label="Method name" htmlFor={`pay-label-${r.id}`} error={errors[r.id]}>
+              <input id={`pay-label-${r.id}`} className="field" value={r.label} onChange={(e) => patch(r.id, { label: e.target.value })} />
+            </Field>
+            <Field label="Instructions shown to the customer" htmlFor={`pay-ins-${r.id}`}>
+              <input id={`pay-ins-${r.id}`} className="field" value={r.instructions} onChange={(e) => patch(r.id, { instructions: e.target.value })} />
+            </Field>
+            <div className="flex items-end gap-4 pb-2">
+              <label className="flex items-center gap-2 text-sm" htmlFor={`pay-on-${r.id}`}>
+                <input id={`pay-on-${r.id}`} type="checkbox" className="h-4 w-4 accent-[#B45309]" checked={r.enabled} onChange={(e) => patch(r.id, { enabled: e.target.checked })} />
+                Enabled
+              </label>
+              <button type="button" className="inline-flex items-center gap-1 text-sm font-semibold text-bad hover:underline" onClick={() => setRows((x) => x.filter((y) => y.id !== r.id))} aria-label={`Remove ${r.label || 'payment method'}`}>
+                <Icon name="trash" className="h-4 w-4" /> Remove
+              </button>
+            </div>
+          </li>
+        ))}
+      </ul>
+
+      {topError ? (
+        <p className="text-sm font-medium text-bad" role="alert">
+          {topError}
+        </p>
+      ) : null}
+      <div className="flex justify-end">
+        <button type="submit" className="btn-primary">
+          Save payment methods
+        </button>
+      </div>
+    </form>
+  );
+}
+
+/* ---------------- Coupons ---------------- */
+
+interface CouponDraft {
+  id: string;
+  code: string;
+  description: string;
+  type: CouponType;
+  value: string;
+  minOrder: string;
+  maxDiscount: string;
+  expiresAt: string;
+  active: boolean;
+}
+
+const blankCoupon = (): CouponDraft => ({
+  id: uid('cp'),
+  code: '',
+  description: '',
+  type: 'percent',
+  value: '',
+  minOrder: '0',
+  maxDiscount: '0',
+  expiresAt: '',
+  active: true,
+});
+
+const draftFromCoupon = (c: Coupon): CouponDraft => ({
+  id: c.id,
+  code: c.code,
+  description: c.description,
+  type: c.type,
+  value: String(c.value),
+  minOrder: String(c.minOrder),
+  maxDiscount: String(c.maxDiscount),
+  expiresAt: c.expiresAt,
+  active: c.active,
+});
+
+function CouponForm({ initial, isNew, onClose }: { initial: CouponDraft; isNew: boolean; onClose: () => void }) {
+  const { settings, saveSettings } = useApp();
+  const [d, setD] = useState<CouponDraft>(initial);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const set = (k: keyof CouponDraft, v: string | boolean) => setD((x) => ({ ...x, [k]: v }));
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    const err: Record<string, string> = {};
+    const code = d.code.trim().toUpperCase().replace(/\s+/g, '');
+    const value = Number(d.value);
+    const minOrder = Number(d.minOrder || 0);
+    const maxDiscount = Number(d.maxDiscount || 0);
+    if (code.length < 3) err.code = 'Use a code of at least 3 characters, e.g. SAVE10.';
+    else if (settings.coupons.some((c) => c.id !== d.id && c.code.toUpperCase() === code)) err.code = 'This code already exists.';
+    if (!Number.isFinite(value) || value <= 0) err.value = 'Enter a discount above 0.';
+    else if (d.type === 'percent' && value > 100) err.value = 'A percentage cannot be above 100.';
+    if (!Number.isFinite(minOrder) || minOrder < 0) err.minOrder = 'Enter 0 or more.';
+    if (!Number.isFinite(maxDiscount) || maxDiscount < 0) err.maxDiscount = 'Enter 0 or more.';
+    setErrors(err);
+    if (Object.keys(err).length > 0) return;
+
+    const coupon: Coupon = {
+      id: d.id,
+      code,
+      description: d.description.trim(),
+      type: d.type,
+      value,
+      minOrder,
+      maxDiscount: d.type === 'percent' ? maxDiscount : 0,
+      expiresAt: d.expiresAt,
+      active: d.active,
+    };
+    const exists = settings.coupons.some((c) => c.id === coupon.id);
+    const coupons = exists ? settings.coupons.map((c) => (c.id === coupon.id ? coupon : c)) : [coupon, ...settings.coupons];
+    if (saveSettings({ ...settings, coupons })) onClose();
+  };
+
+  return (
+    <Modal title={isNew ? 'Add coupon' : 'Edit coupon'} onClose={onClose}>
+      <form className="space-y-4" onSubmit={submit} noValidate>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Coupon code" htmlFor="cp-code" error={errors.code}>
+            <input id="cp-code" className="field font-mono uppercase" value={d.code} onChange={(e) => set('code', e.target.value)} />
+          </Field>
+          <Field label="Discount type" htmlFor="cp-type">
+            <select id="cp-type" className="field" value={d.type} onChange={(e) => set('type', e.target.value)}>
+              <option value="percent">Percentage off</option>
+              <option value="flat">Flat amount off (₹)</option>
+            </select>
+          </Field>
+          <Field label={d.type === 'percent' ? 'Percent off (%)' : 'Amount off (₹)'} htmlFor="cp-value" error={errors.value}>
+            <input id="cp-value" className="field" inputMode="decimal" value={d.value} onChange={(e) => set('value', e.target.value)} />
+          </Field>
+          <Field label="Minimum order (₹)" htmlFor="cp-min" error={errors.minOrder} hint="Subtotal before GST. 0 = no minimum.">
+            <input id="cp-min" className="field" inputMode="decimal" value={d.minOrder} onChange={(e) => set('minOrder', e.target.value)} />
+          </Field>
+          {d.type === 'percent' ? (
+            <Field label="Maximum discount (₹)" htmlFor="cp-max" error={errors.maxDiscount} hint="0 = no cap.">
+              <input id="cp-max" className="field" inputMode="decimal" value={d.maxDiscount} onChange={(e) => set('maxDiscount', e.target.value)} />
+            </Field>
+          ) : null}
+          <Field label="Expires on (optional)" htmlFor="cp-exp">
+            <input id="cp-exp" type="date" className="field" value={d.expiresAt} onChange={(e) => set('expiresAt', e.target.value)} />
+          </Field>
+        </div>
+        <Field label="Description (for your reference)" htmlFor="cp-desc">
+          <input id="cp-desc" className="field" value={d.description} onChange={(e) => set('description', e.target.value)} />
+        </Field>
+        <label className="flex items-center gap-2 text-sm" htmlFor="cp-active">
+          <input id="cp-active" type="checkbox" className="h-4 w-4 accent-[#B45309]" checked={d.active} onChange={(e) => set('active', e.target.checked)} />
+          Active (customers can use it)
+        </label>
+        <div className="flex justify-end gap-2 border-t border-steel-200 pt-4">
+          <button type="button" className="btn-ghost" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="submit" className="btn-primary">
+            Save coupon
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function AdminCoupons() {
+  const { settings, saveSettings } = useApp();
+  const [editing, setEditing] = useState<{ draft: CouponDraft; isNew: boolean } | null>(null);
+
+  const update = (coupons: Coupon[]) => saveSettings({ ...settings, coupons });
+  const expired = (c: Coupon) => Boolean(c.expiresAt) && new Date(c.expiresAt + 'T23:59:59').getTime() < Date.now();
+
+  return (
+    <div>
+      <div className="mb-4 flex justify-end">
+        <button type="button" className="btn-primary" onClick={() => setEditing({ draft: blankCoupon(), isNew: true })}>
+          <Icon name="plus" className="h-4 w-4" /> Add coupon
+        </button>
+      </div>
+
+      <div className="panel overflow-x-auto">
+        <table className="w-full min-w-[720px] text-sm">
+          <thead className="bg-steel-100 text-left text-xs uppercase tracking-wider text-ink-500">
+            <tr>
+              <th className="px-4 py-2">Code</th>
+              <th className="px-4 py-2">Discount</th>
+              <th className="px-4 py-2">Rules</th>
+              <th className="px-4 py-2">Status</th>
+              <th className="px-4 py-2 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {settings.coupons.map((c) => (
+              <tr key={c.id} className="border-t border-steel-200">
+                <td className="px-4 py-3">
+                  <span className="font-mono font-semibold">{c.code}</span>
+                  {c.description ? <span className="block text-xs text-ink-500">{c.description}</span> : null}
+                </td>
+                <td className="px-4 py-3 font-mono tabular-nums">{c.type === 'percent' ? `${c.value}%` : inr(c.value)}</td>
+                <td className="px-4 py-3 text-xs text-ink-700">
+                  <span className="block">{c.minOrder > 0 ? `Min. order ${inr(c.minOrder)}` : 'No minimum'}</span>
+                  {c.type === 'percent' && c.maxDiscount > 0 ? <span className="block">Capped at {inr(c.maxDiscount)}</span> : null}
+                  {c.expiresAt ? <span className="block">Expires {c.expiresAt}</span> : null}
+                </td>
+                <td className="px-4 py-3">
+                  {expired(c) ? <Badge tone="bg-red-50 text-bad">Expired</Badge> : c.active ? <Badge tone="bg-green-50 text-ok">Active</Badge> : <Badge>Paused</Badge>}
+                </td>
+                <td className="px-4 py-3">
+                  <div className="flex flex-wrap items-center justify-end gap-4">
+                    <button type="button" className="text-sm font-semibold hover:underline" onClick={() => update(settings.coupons.map((x) => (x.id === c.id ? { ...x, active: !x.active } : x)))}>
+                      {c.active ? 'Pause' : 'Activate'}
+                    </button>
+                    <button type="button" className="inline-flex items-center gap-1 text-sm font-semibold hover:underline" onClick={() => setEditing({ draft: draftFromCoupon(c), isNew: false })} aria-label={`Edit coupon ${c.code}`}>
+                      <Icon name="edit" className="h-4 w-4" /> Edit
+                    </button>
+                    <ConfirmDelete name={`coupon ${c.code}`} onConfirm={() => update(settings.coupons.filter((x) => x.id !== c.id))} />
+                  </div>
+                </td>
+              </tr>
+            ))}
+            {settings.coupons.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="px-4 py-8 text-center text-ink-500">
+                  No coupons yet. Add one to offer a discount code at checkout.
+                </td>
+              </tr>
+            ) : null}
+          </tbody>
+        </table>
+      </div>
+
+      {editing ? <CouponForm initial={editing.draft} isNew={editing.isNew} onClose={() => setEditing(null)} /> : null}
+    </div>
+  );
+}
+
+// ---- src/pages/Admin.tsx ----
+
+type Tab = 'overview' | 'products' | 'services' | 'company' | 'branding' | 'shipping' | 'payments' | 'coupons' | 'orders' | 'enquiries';
+
+const TABS: { id: Tab; label: string }[] = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'products', label: 'Products' },
+  { id: 'services', label: 'Services' },
+  { id: 'company', label: 'Company details' },
+  { id: 'branding', label: 'Logo' },
+  { id: 'shipping', label: 'Shipping & tax' },
+  { id: 'payments', label: 'Payments' },
+  { id: 'coupons', label: 'Coupons' },
+  { id: 'orders', label: 'Orders' },
+  { id: 'enquiries', label: 'Enquiries' },
+];
+
+/* ---------------- Overview ---------------- */
+
+function AdminOverview() {
+  const { products, orders, enquiries, services, resetAll } = useApp();
+  const [confirmReset, setConfirmReset] = useState(false);
+  const revenue = orders.filter((o) => o.status !== 'Cancelled').reduce((s, o) => s + o.total, 0);
+  const lowStock = products.filter((p) => p.stock <= 5 || !isAvailable(p)).sort((a, b) => a.stock - b.stock);
+  const newEnquiries = enquiries.filter((e) => e.status === 'New').length;
+
+  const tiles = [
+    { label: 'Revenue (excl. cancelled)', value: inr(revenue) },
+    { label: 'Orders', value: String(orders.length) },
+    { label: 'New enquiries', value: String(newEnquiries) },
+    { label: 'Products / services', value: `${products.length} / ${services.length}` },
+  ];
+
+  return (
+    <div className="space-y-6">
+      <dl className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        {tiles.map((t) => (
+          <div key={t.label} className="panel p-4">
+            <dt className="text-xs font-semibold uppercase tracking-wider text-ink-500">{t.label}</dt>
+            <dd className="mt-1 font-display text-3xl font-semibold tabular-nums">{t.value}</dd>
+          </div>
+        ))}
+      </dl>
+
+      <section className="panel">
+        <h2 className="border-b border-steel-200 px-5 py-3 text-2xl font-semibold">Low or out of stock</h2>
+        {lowStock.length === 0 ? (
+          <p className="p-5 text-sm text-ink-500">Every product is in stock with more than 5 units.</p>
+        ) : (
+          <ul className="divide-y divide-steel-200">
+            {lowStock.map((p) => (
+              <li key={p.id} className="flex items-center justify-between gap-4 px-5 py-3 text-sm">
+                <span className="min-w-0 truncate">{p.name}</span>
+                <span className={`shrink-0 font-mono font-semibold ${!isAvailable(p) ? 'text-bad' : 'text-forge-dark'}`}>{!isAvailable(p) ? 'Out of stock' : `${p.stock} left`}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="panel p-5">
+        <h2 className="text-2xl font-semibold">Data</h2>
+        <p className="mt-1 text-sm text-ink-700">
+          All changes are saved in this browser (local storage). Restoring sample data replaces products, services, company details, orders and
+          enquiries.
+        </p>
+        {confirmReset ? (
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <button type="button" className="btn-danger" onClick={() => { resetAll(); setConfirmReset(false); }}>
+              Yes, restore sample data
+            </button>
+            <button type="button" className="btn-ghost" onClick={() => setConfirmReset(false)}>
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <button type="button" className="btn-ghost mt-3" onClick={() => setConfirmReset(true)}>
+            Restore sample data
+          </button>
+        )}
+      </section>
+    </div>
+  );
+}
+
+/* ---------------- Products ---------------- */
+
+interface ProductDraft {
+  id: string;
+  sku: string;
+  name: string;
+  category: string;
+  brand: string;
+  price: string;
+  mrp: string;
+  stock: string;
+  unit: string;
+  description: string;
+  specs: string;
+  featured: boolean;
+  image: string;
+  inStock: boolean;
+  hidden: boolean;
+}
+
+const blankProduct = (): ProductDraft => ({
+  id: uid('p'),
+  sku: '',
+  name: '',
+  category: '',
+  brand: 'Vel',
+  price: '',
+  mrp: '',
+  stock: '0',
+  unit: 'piece',
+  description: '',
+  specs: '',
+  featured: false,
+  image: '',
+  inStock: true,
+  hidden: false,
+});
+
+const draftFromProduct = (p: Product): ProductDraft => ({
+  id: p.id,
+  sku: p.sku,
+  name: p.name,
+  category: p.category,
+  brand: p.brand,
+  price: String(p.price),
+  mrp: String(p.mrp),
+  stock: String(p.stock),
+  unit: p.unit,
+  description: p.description,
+  specs: specsToText(p.specs),
+  featured: p.featured,
+  image: p.image ?? '',
+  inStock: p.available !== false,
+  hidden: Boolean(p.hidden),
+});
+
+function ProductForm({ initial, isNew, onClose }: { initial: ProductDraft; isNew: boolean; onClose: () => void }) {
+  const { products, saveProduct } = useApp();
+  const [d, setD] = useState<ProductDraft>(initial);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const categories = Array.from(new Set(products.map((p) => p.category)));
+
+  const set = (k: keyof ProductDraft, v: string | boolean) => setD((x) => ({ ...x, [k]: v }));
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    const err: Record<string, string> = {};
+    const price = Number(d.price);
+    const mrp = d.mrp.trim() === '' ? price : Number(d.mrp);
+    const stock = Number(d.stock);
+    if (d.name.trim().length < 3) err.name = 'Enter a product name.';
+    if (d.sku.trim().length < 2) err.sku = 'Enter a SKU.';
+    else if (products.some((p) => p.id !== d.id && p.sku.toLowerCase() === d.sku.trim().toLowerCase())) err.sku = 'This SKU already exists.';
+    if (d.category.trim().length < 2) err.category = 'Enter a category.';
+    if (!Number.isFinite(price) || price <= 0) err.price = 'Enter a price above 0.';
+    if (!Number.isFinite(mrp) || mrp < price) err.mrp = 'MRP must be at least the selling price.';
+    if (!Number.isInteger(stock) || stock < 0) err.stock = 'Enter a whole number, 0 or more.';
+    setErrors(err);
+    if (Object.keys(err).length > 0) return;
+
+    const product: Product = {
+      id: d.id,
+      sku: d.sku.trim(),
+      name: d.name.trim(),
+      category: d.category.trim(),
+      brand: d.brand.trim() || 'Vel',
+      price,
+      mrp,
+      stock,
+      unit: d.unit.trim() || 'piece',
+      description: d.description.trim(),
+      specs: parseSpecs(d.specs),
+      featured: d.featured,
+      image: d.image,
+      available: d.inStock,
+      hidden: d.hidden,
+    };
+    if (saveProduct(product)) onClose();
+  };
+
+  return (
+    <Modal title={isNew ? 'Add product' : 'Edit product'} onClose={onClose} wide>
+      <form className="space-y-4" onSubmit={submit} noValidate>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Name" htmlFor="pf-name" error={errors.name}>
+            <input id="pf-name" className="field" value={d.name} onChange={(e) => set('name', e.target.value)} />
+          </Field>
+          <Field label="SKU" htmlFor="pf-sku" error={errors.sku}>
+            <input id="pf-sku" className="field font-mono" value={d.sku} onChange={(e) => set('sku', e.target.value)} />
+          </Field>
+          <Field label="Category" htmlFor="pf-cat" error={errors.category}>
+            <input id="pf-cat" className="field" list="pf-cats" value={d.category} onChange={(e) => set('category', e.target.value)} />
+            <datalist id="pf-cats">
+              {categories.map((c) => (
+                <option key={c} value={c} />
+              ))}
+            </datalist>
+          </Field>
+          <Field label="Brand" htmlFor="pf-brand">
+            <input id="pf-brand" className="field" value={d.brand} onChange={(e) => set('brand', e.target.value)} />
+          </Field>
+          <Field label="Price (₹, excl. GST)" htmlFor="pf-price" error={errors.price}>
+            <input id="pf-price" className="field" inputMode="decimal" value={d.price} onChange={(e) => set('price', e.target.value)} />
+          </Field>
+          <Field label="MRP (₹)" htmlFor="pf-mrp" error={errors.mrp} hint="Leave blank to match the price.">
+            <input id="pf-mrp" className="field" inputMode="decimal" value={d.mrp} onChange={(e) => set('mrp', e.target.value)} />
+          </Field>
+          <Field label="Quantity in stock" htmlFor="pf-stock" error={errors.stock}>
+            <input id="pf-stock" className="field" inputMode="numeric" value={d.stock} onChange={(e) => set('stock', e.target.value)} />
+          </Field>
+          <Field label="Unit" htmlFor="pf-unit">
+            <input id="pf-unit" className="field" value={d.unit} onChange={(e) => set('unit', e.target.value)} />
+          </Field>
+          <Field label="Stock status" htmlFor="pf-status" hint="Out of stock disables buying even if a quantity is set.">
+            <select id="pf-status" className="field" value={d.inStock ? 'in' : 'out'} onChange={(e) => set('inStock', e.target.value === 'in')}>
+              <option value="in">In stock</option>
+              <option value="out">Out of stock</option>
+            </select>
+          </Field>
+        </div>
+        <ImagePicker
+          id="pf-image"
+          label="Product image"
+          value={d.image}
+          onChange={(v) => set('image', v)}
+          maxDim={800}
+          mime="image/jpeg"
+          hint="Resized automatically to keep the site fast. Use a clear photo on a plain background."
+        />
+        <Field label="Description" htmlFor="pf-desc">
+          <textarea id="pf-desc" rows={3} className="field" value={d.description} onChange={(e) => set('description', e.target.value)} />
+        </Field>
+        <Field label="Specifications" htmlFor="pf-specs" hint='One per line, written as "Label: value".'>
+          <textarea id="pf-specs" rows={5} className="field font-mono" value={d.specs} onChange={(e) => set('specs', e.target.value)} />
+        </Field>
+        <div className="space-y-2">
+          <label className="flex items-center gap-2 text-sm" htmlFor="pf-featured">
+            <input id="pf-featured" type="checkbox" className="h-4 w-4 accent-[#B45309]" checked={d.featured} onChange={(e) => set('featured', e.target.checked)} />
+            Show on the homepage as a featured product
+          </label>
+          <label className="flex items-center gap-2 text-sm" htmlFor="pf-hidden">
+            <input id="pf-hidden" type="checkbox" className="h-4 w-4 accent-[#B45309]" checked={d.hidden} onChange={(e) => set('hidden', e.target.checked)} />
+            Hide this product from the public store
+          </label>
+        </div>
+        <div className="flex justify-end gap-2 border-t border-steel-200 pt-4">
+          <button type="button" className="btn-ghost" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="submit" className="btn-primary">
+            Save product
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function AdminProducts() {
+  const { products, deleteProduct, saveProduct } = useApp();
+  const [editing, setEditing] = useState<{ draft: ProductDraft; isNew: boolean } | null>(null);
+  const [filter, setFilter] = useState('');
+  const shown = products.filter((p) => (p.name + p.sku + p.category).toLowerCase().includes(filter.trim().toLowerCase()));
+
+  return (
+    <div>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <input id="adm-prod-filter" className="field max-w-xs" placeholder="Filter products" aria-label="Filter products" value={filter} onChange={(e) => setFilter(e.target.value)} />
+        <button type="button" className="btn-primary" onClick={() => setEditing({ draft: blankProduct(), isNew: true })}>
+          <Icon name="plus" className="h-4 w-4" /> Add product
+        </button>
+      </div>
+
+      <div className="panel overflow-x-auto">
+        <table className="w-full min-w-[860px] text-sm">
+          <thead className="bg-steel-100 text-left text-xs uppercase tracking-wider text-ink-500">
+            <tr>
+              <th className="px-4 py-2">Product</th>
+              <th className="px-4 py-2">Category</th>
+              <th className="px-4 py-2 text-right">Price</th>
+              <th className="px-4 py-2">Stock</th>
+              <th className="px-4 py-2">Visibility</th>
+              <th className="px-4 py-2 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {shown.map((p) => (
+              <tr key={p.id} className={`border-t border-steel-200 ${p.hidden ? 'bg-steel-50 text-ink-500' : ''}`}>
+                <td className="px-4 py-3">
+                  <div className="flex items-center gap-3">
+                    <ProductArt seed={p.id} image={p.image} className="h-12 w-16 shrink-0 border border-steel-200" />
+                    <div className="min-w-0">
+                      <span className="font-semibold">{p.name}</span>
+                      {p.featured ? <span className="ml-2"><Badge tone="bg-forge-tint text-forge-dark">Featured</Badge></span> : null}
+                      <span className="block font-mono text-xs text-steel-500">{p.sku}</span>
+                    </div>
+                  </div>
+                </td>
+                <td className="px-4 py-3">{p.category}</td>
+                <td className="px-4 py-3 text-right font-mono tabular-nums">{inr(p.price)}</td>
+                <td className="px-4 py-3">
+                  {isAvailable(p) ? <Badge tone="bg-green-50 text-ok">In stock</Badge> : <Badge tone="bg-red-50 text-bad">Out of stock</Badge>}
+                  <span className={`mt-1 block font-mono text-xs ${p.stock <= 5 ? 'font-semibold text-forge-dark' : 'text-ink-500'}`}>Qty {p.stock}</span>
+                </td>
+                <td className="px-4 py-3">{p.hidden ? <Badge>Hidden</Badge> : <Badge tone="bg-blue-50 text-blue-800">Visible</Badge>}</td>
+                <td className="px-4 py-3">
+                  <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-1">
+                    <button type="button" className="inline-flex items-center gap-1 text-sm font-semibold hover:underline" onClick={() => setEditing({ draft: draftFromProduct(p), isNew: false })} aria-label={`Edit ${p.name}`}>
+                      <Icon name="edit" className="h-4 w-4" /> Edit
+                    </button>
+                    <button type="button" className="text-sm font-semibold hover:underline" onClick={() => saveProduct({ ...p, available: p.available === false })} aria-label={`${p.available === false ? 'Mark in stock' : 'Mark out of stock'}: ${p.name}`}>
+                      {p.available === false ? 'Mark in stock' : 'Mark out of stock'}
+                    </button>
+                    <button type="button" className="text-sm font-semibold hover:underline" onClick={() => saveProduct({ ...p, hidden: !p.hidden })} aria-label={`${p.hidden ? 'Show' : 'Hide'} ${p.name}`}>
+                      {p.hidden ? 'Show' : 'Hide'}
+                    </button>
+                    <ConfirmDelete name={p.name} onConfirm={() => deleteProduct(p.id)} />
+                  </div>
+                </td>
+              </tr>
+            ))}
+            {shown.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="px-4 py-8 text-center text-ink-500">
+                  No products found.
+                </td>
+              </tr>
+            ) : null}
+          </tbody>
+        </table>
+      </div>
+
+      {editing ? <ProductForm initial={editing.draft} isNew={editing.isNew} onClose={() => setEditing(null)} /> : null}
+    </div>
+  );
+}
+
+/* ---------------- Services ---------------- */
+
+interface ServiceDraft {
+  id: string;
+  name: string;
+  description: string;
+  priceFrom: string;
+  turnaround: string;
+  coverage: string;
+}
+
+function ServiceForm({ initial, isNew, onClose }: { initial: ServiceDraft; isNew: boolean; onClose: () => void }) {
+  const { saveService } = useApp();
+  const [d, setD] = useState<ServiceDraft>(initial);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const set = (k: keyof ServiceDraft, v: string) => setD((x) => ({ ...x, [k]: v }));
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    const err: Record<string, string> = {};
+    const price = Number(d.priceFrom);
+    if (d.name.trim().length < 3) err.name = 'Enter a service name.';
+    if (d.description.trim().length < 10) err.description = 'Add a short description.';
+    if (!Number.isFinite(price) || price < 0) err.priceFrom = 'Enter a starting price, 0 or more.';
+    setErrors(err);
+    if (Object.keys(err).length > 0) return;
+    const service: Service = {
+      id: d.id,
+      name: d.name.trim(),
+      description: d.description.trim(),
+      priceFrom: price,
+      turnaround: d.turnaround.trim(),
+      coverage: d.coverage.split(',').map((c) => c.trim()).filter(Boolean),
+    };
+    if (saveService(service)) onClose();
+  };
+
+  return (
+    <Modal title={isNew ? 'Add service' : 'Edit service'} onClose={onClose}>
+      <form className="space-y-4" onSubmit={submit} noValidate>
+        <Field label="Service name" htmlFor="sf-name" error={errors.name}>
+          <input id="sf-name" className="field" value={d.name} onChange={(e) => set('name', e.target.value)} />
+        </Field>
+        <Field label="Description" htmlFor="sf-desc" error={errors.description}>
+          <textarea id="sf-desc" rows={3} className="field" value={d.description} onChange={(e) => set('description', e.target.value)} />
+        </Field>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Starting price (₹)" htmlFor="sf-price" error={errors.priceFrom}>
+            <input id="sf-price" className="field" inputMode="decimal" value={d.priceFrom} onChange={(e) => set('priceFrom', e.target.value)} />
+          </Field>
+          <Field label="Turnaround" htmlFor="sf-turn">
+            <input id="sf-turn" className="field" value={d.turnaround} onChange={(e) => set('turnaround', e.target.value)} />
+          </Field>
+        </div>
+        <Field label="Coverage" htmlFor="sf-cov" hint="Comma separated, e.g. Motors, Pumps, Gearboxes">
+          <input id="sf-cov" className="field" value={d.coverage} onChange={(e) => set('coverage', e.target.value)} />
+        </Field>
+        <div className="flex justify-end gap-2 border-t border-steel-200 pt-4">
+          <button type="button" className="btn-ghost" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="submit" className="btn-primary">
+            Save service
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function AdminServices() {
+  const { services, deleteService } = useApp();
+  const [editing, setEditing] = useState<{ draft: ServiceDraft; isNew: boolean } | null>(null);
+
+  const blank = (): ServiceDraft => ({ id: uid('s'), name: '', description: '', priceFrom: '', turnaround: '', coverage: '' });
+  const fromService = (s: Service): ServiceDraft => ({
+    id: s.id,
+    name: s.name,
+    description: s.description,
+    priceFrom: String(s.priceFrom),
+    turnaround: s.turnaround,
+    coverage: s.coverage.join(', '),
+  });
+
+  return (
+    <div>
+      <div className="mb-4 flex justify-end">
+        <button type="button" className="btn-primary" onClick={() => setEditing({ draft: blank(), isNew: true })}>
+          <Icon name="plus" className="h-4 w-4" /> Add service
+        </button>
+      </div>
+      <ul className="panel divide-y divide-steel-200">
+        {services.map((s) => (
+          <li key={s.id} className="flex flex-wrap items-center justify-between gap-3 p-4">
+            <div className="min-w-0">
+              <p className="font-semibold">{s.name}</p>
+              <p className="font-mono text-xs text-ink-500">
+                from {inr(s.priceFrom)} · {s.turnaround || 'no turnaround set'}
+              </p>
+            </div>
+            <div className="flex items-center gap-4">
+              <button type="button" className="inline-flex items-center gap-1 text-sm font-semibold hover:underline" onClick={() => setEditing({ draft: fromService(s), isNew: false })} aria-label={`Edit ${s.name}`}>
+                <Icon name="edit" className="h-4 w-4" /> Edit
+              </button>
+              <ConfirmDelete name={s.name} onConfirm={() => deleteService(s.id)} />
+            </div>
+          </li>
+        ))}
+        {services.length === 0 ? <li className="p-6 text-center text-ink-500">No services yet. Add the first one.</li> : null}
+      </ul>
+      {editing ? <ServiceForm initial={editing.draft} isNew={editing.isNew} onClose={() => setEditing(null)} /> : null}
+    </div>
+  );
+}
+
+/* ---------------- Company details ---------------- */
+
+function AdminCompany() {
+  const { company, saveCompany } = useApp();
+  const [c, setC] = useState({
+    name: company.name,
+    tagline: company.tagline,
+    phone: company.phone,
+    altPhone: company.altPhone,
+    email: company.email,
+    address: company.address,
+    hours: company.hours,
+    about: company.about,
+    mIntro: company.manufacturing.intro,
+    capabilities: company.manufacturing.capabilities.join('\n'),
+    certifications: company.manufacturing.certifications.join('\n'),
+    stats: specsToText(company.manufacturing.stats),
+  });
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const set = (k: keyof typeof c, v: string) => setC((x) => ({ ...x, [k]: v }));
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    const err: Record<string, string> = {};
+    if (c.name.trim().length < 2) err.name = 'Enter the company name.';
+    if (!isValidPhone(c.phone)) err.phone = 'Enter a phone number with at least 10 digits.';
+    if (c.altPhone.trim() && !isValidPhone(c.altPhone)) err.altPhone = 'Enter a valid number or leave blank.';
+    if (!isValidEmail(c.email)) err.email = 'Enter a valid email address.';
+    setErrors(err);
+    if (Object.keys(err).length > 0) return;
+
+    const next: Company = {
+      name: c.name.trim(),
+      tagline: c.tagline.trim(),
+      phone: c.phone.trim(),
+      altPhone: c.altPhone.trim(),
+      email: c.email.trim(),
+      address: c.address.trim(),
+      hours: c.hours.trim(),
+      about: c.about.trim(),
+      manufacturing: {
+        intro: c.mIntro.trim(),
+        capabilities: parseLines(c.capabilities),
+        certifications: parseLines(c.certifications),
+        stats: parseSpecs(c.stats),
+      },
+    };
+    saveCompany(next);
+  };
+
+  return (
+    <form className="space-y-6" onSubmit={submit} noValidate>
+      <section className="panel space-y-4 p-5">
+        <h2 className="text-2xl font-semibold">Contact and identity</h2>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Company name" htmlFor="co-f-name" error={errors.name}>
+            <input id="co-f-name" className="field" value={c.name} onChange={(e) => set('name', e.target.value)} />
+          </Field>
+          <Field label="Tagline" htmlFor="co-f-tag">
+            <input id="co-f-tag" className="field" value={c.tagline} onChange={(e) => set('tagline', e.target.value)} />
+          </Field>
+          <Field label="Primary phone" htmlFor="co-f-phone" error={errors.phone}>
+            <input id="co-f-phone" className="field font-mono" inputMode="tel" value={c.phone} onChange={(e) => set('phone', e.target.value)} />
+          </Field>
+          <Field label="Alternate phone" htmlFor="co-f-alt" error={errors.altPhone}>
+            <input id="co-f-alt" className="field font-mono" inputMode="tel" value={c.altPhone} onChange={(e) => set('altPhone', e.target.value)} />
+          </Field>
+          <Field label="Email" htmlFor="co-f-email" error={errors.email}>
+            <input id="co-f-email" className="field" value={c.email} onChange={(e) => set('email', e.target.value)} />
+          </Field>
+          <Field label="Working hours" htmlFor="co-f-hours">
+            <input id="co-f-hours" className="field" value={c.hours} onChange={(e) => set('hours', e.target.value)} />
+          </Field>
+        </div>
+        <Field label="Address" htmlFor="co-f-addr">
+          <input id="co-f-addr" className="field" value={c.address} onChange={(e) => set('address', e.target.value)} />
+        </Field>
+        <Field label="About the group" htmlFor="co-f-about">
+          <textarea id="co-f-about" rows={3} className="field" value={c.about} onChange={(e) => set('about', e.target.value)} />
+        </Field>
+      </section>
+
+      <section className="panel space-y-4 p-5">
+        <h2 className="text-2xl font-semibold">Vel Manufacturing Company</h2>
+        <Field label="Introduction" htmlFor="co-f-mintro">
+          <textarea id="co-f-mintro" rows={3} className="field" value={c.mIntro} onChange={(e) => set('mIntro', e.target.value)} />
+        </Field>
+        <div className="grid gap-4 md:grid-cols-3">
+          <Field label="Capabilities" htmlFor="co-f-caps" hint="One per line.">
+            <textarea id="co-f-caps" rows={6} className="field" value={c.capabilities} onChange={(e) => set('capabilities', e.target.value)} />
+          </Field>
+          <Field label="Quality and certifications" htmlFor="co-f-certs" hint="One per line.">
+            <textarea id="co-f-certs" rows={6} className="field" value={c.certifications} onChange={(e) => set('certifications', e.target.value)} />
+          </Field>
+          <Field label="Headline figures" htmlFor="co-f-stats" hint='One per line, as "Label: value".'>
+            <textarea id="co-f-stats" rows={6} className="field font-mono" value={c.stats} onChange={(e) => set('stats', e.target.value)} />
+          </Field>
+        </div>
+      </section>
+
+      <div className="flex justify-end">
+        <button type="submit" className="btn-primary">
+          Save company details
+        </button>
+      </div>
+    </form>
+  );
+}
+
+/* ---------------- Orders ---------------- */
+
+function AdminOrders() {
+  const { orders, setOrderStatus } = useApp();
+  if (orders.length === 0) {
+    return <p className="panel p-8 text-center text-ink-500">No orders yet. Orders placed at checkout appear here.</p>;
+  }
+  return (
+    <ul className="space-y-4">
+      {orders.map((o) => (
+        <li key={o.id} className="panel">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-steel-200 px-5 py-3">
+            <div className="min-w-0">
+              <p className="font-mono font-semibold">{o.id}</p>
+              <p className="text-xs text-ink-500">
+                {fmtDate(o.createdAt)} · {o.customerName} ({o.customerEmail})
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              <Badge>{o.status}</Badge>
+              <label htmlFor={`ord-${o.id}`} className="sr-only">
+                Status for {o.id}
+              </label>
+              <select id={`ord-${o.id}`} className="field !w-auto !py-1.5" value={o.status} onChange={(e) => setOrderStatus(o.id, e.target.value as typeof o.status)}>
+                {ORDER_STATUSES.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="grid gap-4 p-5 text-sm md:grid-cols-[1.4fr_1fr]">
+            <ul className="space-y-1">
+              {o.items.map((i) => (
+                <li key={i.productId} className="flex justify-between gap-3">
+                  <span className="min-w-0">
+                    {i.name} <span className="font-mono text-steel-500">× {i.qty}</span>
+                  </span>
+                  <span className="shrink-0 font-mono tabular-nums">{inr(i.price * i.qty)}</span>
+                </li>
+              ))}
+              {o.discount ? (
+                <li className="flex justify-between text-ok">
+                  <span>Coupon {o.coupon}</span>
+                  <span className="font-mono tabular-nums">−{inr(o.discount)}</span>
+                </li>
+              ) : null}
+              <li className="flex justify-between border-t border-steel-200 pt-2 font-semibold">
+                <span>Total incl. GST and shipping</span>
+                <span className="font-mono tabular-nums">{inr(o.total)}</span>
+              </li>
+            </ul>
+            <div className="text-ink-700">
+              <p className="font-semibold text-ink">Ship to</p>
+              <p>{o.ship.name}</p>
+              <p>
+                {o.ship.line1}, {o.ship.city}, {o.ship.state} {o.ship.pincode}
+              </p>
+              <p className="font-mono">{o.ship.phone}</p>
+              <p className="mt-2 text-xs">Payment: {o.payment}</p>
+              {o.courier ? <p className="text-xs">Delivery: {o.courier} ({o.shipping === 0 ? 'free' : inr(o.shipping)})</p> : null}
+            </div>
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/* ---------------- Enquiries ---------------- */
+
+function AdminEnquiries() {
+  const { enquiries, setEnquiryStatus } = useApp();
+  if (enquiries.length === 0) {
+    return <p className="panel p-8 text-center text-ink-500">No enquiries yet. Submissions from the Service Enquiry page appear here.</p>;
+  }
+  return (
+    <ul className="space-y-4">
+      {enquiries.map((e) => (
+        <li key={e.id} className="panel p-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-xl font-semibold">{e.topic}</p>
+              <p className="font-mono text-xs text-ink-500">
+                {e.id} · {fmtDate(e.createdAt)}
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              <Badge>{e.status}</Badge>
+              <label htmlFor={`enq-${e.id}`} className="sr-only">
+                Status for {e.id}
+              </label>
+              <select id={`enq-${e.id}`} className="field !w-auto !py-1.5" value={e.status} onChange={(ev) => setEnquiryStatus(e.id, ev.target.value as typeof e.status)}>
+                {ENQUIRY_STATUSES.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <p className="mt-3 whitespace-pre-wrap text-sm text-ink-700">{e.message}</p>
+          <dl className="mt-3 grid gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
+            <div className="flex gap-2"><dt className="text-ink-500">Name</dt><dd>{e.name}</dd></div>
+            <div className="flex gap-2"><dt className="text-ink-500">Phone</dt><dd className="font-mono">{e.phone}</dd></div>
+            <div className="flex min-w-0 gap-2"><dt className="text-ink-500">Email</dt><dd className="break-all">{e.email}</dd></div>
+            {e.equipment ? <div className="flex gap-2"><dt className="text-ink-500">Equipment</dt><dd>{e.equipment}</dd></div> : null}
+            {e.preferredDate ? <div className="flex gap-2"><dt className="text-ink-500">Preferred date</dt><dd className="font-mono">{e.preferredDate}</dd></div> : null}
+          </dl>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/* ---------------- Dashboard shell ---------------- */
+
+function Admin() {
+  const { session, orders, enquiries } = useApp();
+  const [tab, setTab] = useState<Tab>('overview');
+  const newEnq = enquiries.filter((e) => e.status === 'New').length;
+  const openOrders = orders.filter((o) => o.status === 'Placed').length;
+
+  return (
+    <>
+      <PageHeader eyebrow="Management Dashboard" title="Run the group" lead={`Signed in as ${session?.email ?? ''}. Changes save instantly and appear on the public pages.`} />
+      <div className="wrap mt-6">
+        <div role="tablist" aria-label="Dashboard sections" className="flex gap-1 overflow-x-auto border-b border-steel-200">
+          {TABS.map((t) => {
+            const count = t.id === 'enquiries' ? newEnq : t.id === 'orders' ? openOrders : 0;
+            return (
+              <button
+                key={t.id}
+                id={`tab-${t.id}`}
+                type="button"
+                role="tab"
+                aria-selected={tab === t.id}
+                aria-controls="admin-panel"
+                onClick={() => setTab(t.id)}
+                className={`-mb-px shrink-0 border-b-2 px-4 py-2.5 text-sm font-semibold ${
+                  tab === t.id ? 'border-forge text-forge-dark' : 'border-transparent text-ink-700 hover:text-ink'
+                }`}
+              >
+                {t.label}
+                {count > 0 ? <span className="ml-1.5 rounded-full bg-forge px-1.5 font-mono text-[11px] text-white">{count}</span> : null}
+              </button>
+            );
+          })}
+        </div>
+        <div id="admin-panel" role="tabpanel" aria-labelledby={`tab-${tab}`} className="mt-6">
+          {tab === 'overview' ? <AdminOverview /> : null}
+          {tab === 'products' ? <AdminProducts /> : null}
+          {tab === 'services' ? <AdminServices /> : null}
+          {tab === 'company' ? <AdminCompany /> : null}
+          {tab === 'branding' ? <AdminBranding /> : null}
+          {tab === 'shipping' ? <AdminShipping /> : null}
+          {tab === 'payments' ? <AdminPayments /> : null}
+          {tab === 'coupons' ? <AdminCoupons /> : null}
+          {tab === 'orders' ? <AdminOrders /> : null}
+          {tab === 'enquiries' ? <AdminEnquiries /> : null}
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ---- src/App.tsx ----
+
+function Page({ route }: { route: RouteId }) {
+  const { role } = useApp();
+
+  // The Management Dashboard is invisible to everyone except the owner's admin account:
+  // other visitors are sent to the homepage with no hint that the page exists.
+  if (route === 'admin' && role !== 'admin') return <Home />;
+
+  // Role-based access control for the remaining routes (e.g. checkout needs a signed-in user).
+  if (!ROUTE_ACCESS[route].includes(role)) {
+    return <Login reason="Sign in with your Gmail account to complete your purchase." inPlace />;
+  }
+
+  switch (route) {
+    case 'home':
+      return <Home />;
+    case 'service-center':
+      return <ServiceCenter />;
+    case 'store':
+      return <Store />;
+    case 'manufacturing':
+      return <Manufacturing />;
+    case 'service-enquiry':
+      return <ServiceEnquiry />;
+    case 'cart':
+      return <Cart />;
+    case 'checkout':
+      return <Checkout />;
+    case 'login':
+      return <Login inPlace={false} />;
+    case 'admin':
+      return <Admin />;
+    default:
+      return <Home />;
+  }
+}
+
+function Shell() {
+  const route = useRoute();
+  const { company, role } = useApp();
+
+  useEffect(() => {
+    document.title = company.name;
+  }, [company.name]);
+
+  // Non-admins who open #admin are redirected home, including when the hash changes later.
+  useEffect(() => {
+    const guard = () => {
+      if (window.location.hash === '#admin' && role !== 'admin') go('home');
+    };
+    guard();
+    window.addEventListener('hashchange', guard);
+    return () => window.removeEventListener('hashchange', guard);
+  }, [role]);
+
+  return (
+    <div className="flex min-h-screen flex-col">
+      <Header route={route} />
+      <main className="flex-1">
+        <Page route={route} />
+      </main>
+      <Footer />
+      <Toasts />
+    </div>
+  );
+}
+
+function App() {
+  return (
+    <AppProvider>
+      <Shell />
+    </AppProvider>
+  );
+}
+
+// ---- src/main.tsx ----
+
+createRoot(document.getElementById('root')!).render(
+  <StrictMode>
+    <App />
+  </StrictMode>,
+);
+
+</script>
+<script>
+(function () {
+  var root = document.getElementById('root');
+  try {
+    var src = document.getElementById('vel-src').textContent;
+    var out = Babel.transform(src, {
+      filename: 'vel.tsx',
+      presets: [['typescript', { isTSX: true, allExtensions: true }], 'react']
+    }).code;
+    var s = document.createElement('script');
+    s.textContent = out;
+    document.body.appendChild(s);
+  } catch (e) {
+    root.innerHTML = '<pre style="padding:16px;white-space:pre-wrap;color:#B42318">' + String(e).replace(/</g, '&lt;') + '</pre>';
+  }
+})();
+</script>
+
+</body></html>
